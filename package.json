@@ -1,6 +1,6 @@
 {
   "name": "@mgamadeus/ddd-web",
-  "version": "0.0.1",
+  "version": "0.1.0-dev.0",
   "description": "TypeScript web client for backends built with mgamadeus/ddd, the DDD entity framework for Symfony and Doctrine (Composer/Packagist). Generates a typed RTK Query SDK from the backend's OpenAPI document, builds DDD QueryOptions (filters, orderBy, expand, select, paging) and handles JWT auth with token refresh.",
   "keywords": [
     "ddd",
@@ -27,15 +27,73 @@
   "license": "MIT",
   "author": "Marius-Eugen Gerdan <marius@gerdan.net>",
   "type": "module",
+  "sideEffects": false,
+  "exports": {
+    "./contract": {
+      "types": "./dist/contract/index.d.ts",
+      "import": "./dist/contract/index.js"
+    },
+    "./query": {
+      "types": "./dist/query/index.d.ts",
+      "import": "./dist/query/index.js"
+    },
+    "./api": {
+      "types": "./dist/api/index.d.ts",
+      "import": "./dist/api/index.js"
+    },
+    "./auth": {
+      "types": "./dist/auth/index.d.ts",
+      "import": "./dist/auth/index.js"
+    },
+    "./codegen": {
+      "types": "./dist/codegen/index.d.ts",
+      "import": "./dist/codegen/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "ddd-web-sdk": "./dist/codegen/cli.js",
+    "ddd-web": "./dist/codegen/cli.js"
+  },
   "files": [
+    "dist",
+    ".claude/skills",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc -p .",
+    "test": "vitest run",
+    "prepack": "pnpm build"
+  },
   "engines": {
     "node": ">=20"
   },
-  "packageManager": "pnpm@11.15.1",
+  "packageManager": "pnpm@12.16.1",
   "publishConfig": {
     "access": "public"
+  },
+  "dependencies": {
+    "@rtk-query/codegen-openapi": "^2.2.0",
+    "async-mutex": "^0.5.0",
+    "jiti": "^2.7.0",
+    "prettier": "^3.9.10"
+  },
+  "peerDependencies": {
+    "@reduxjs/toolkit": "^2.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@reduxjs/toolkit": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@reduxjs/toolkit": "^2.13.0",
+    "@types/node": "^26.6.6",
+    "tsup": "^9.0.0",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.5"
   }
 }
