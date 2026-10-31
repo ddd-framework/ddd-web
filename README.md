@@ -1,6 +1,6 @@
 # @mgamadeus/ddd-web
 
-> **Status: pre-release.** 0.0.1 only reserved the package name; 0.1.0 is the first usable version.
+> 0.x: a minor release may contain breaking changes, a patch never does — see CHANGELOG.md.
 
 `@mgamadeus/ddd-web` is the frontend counterpart of [mgamadeus/ddd](https://packagist.org/packages/mgamadeus/ddd),
 a PHP framework for domain-driven applications on top of Symfony and Doctrine, distributed via Composer/Packagist.
@@ -19,7 +19,8 @@ those conventions into frontend code:
 - **contract**: TypeScript types for the DDD wire format
 
 It contains no UI components and no domain logic; apps bring their own design system and business screens.
-Requires a backend on mgamadeus/ddd with OpenAPI contract version ≥ 1 (shipped with the `x-ddd-*` extensions).
+Works with the OpenAPI output of current mgamadeus/ddd backends. The `x-ddd-*` extensions (contract version 1) are used
+when a backend emits them; without them the generator falls back to path heuristics and prints a warning.
 
 ## Usage
 
@@ -47,6 +48,11 @@ pnpm exec ddd-web link-skills    # link the package's agent skills into .claude/
 ```
 
 Subpaths: `@mgamadeus/ddd-web/codegen`, `/query`, `/api`, `/auth`, `/contract`.
+
+## Agent skill
+
+The package ships the agent skill `ddd-web-specialist` (consumer guide + maintaining guide). Link it into an app's
+`.claude/skills` with `pnpm exec ddd-web link-skills`.
 
 ## Development
 

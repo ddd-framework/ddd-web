@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.1.0
+
+First usable release.
 - Port of the DDD contract client (codegen, query, api, auth, contract).
 
 ### Fixed (review round 1)
