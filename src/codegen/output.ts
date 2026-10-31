@@ -1,8 +1,10 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { OutputFiles } from './files';
+import { SdkGenerationError } from './log';
 
-function move(from: string, to: string): void {
+/** Moves a file or directory; falls back to copy + delete across devices. */
+export function defaultMove(from: string, to: string): void {
   fs.mkdirSync(path.dirname(to), { recursive: true });
   try {
     fs.renameSync(from, to);
@@ -13,8 +15,13 @@ function move(from: string, to: string): void {
   }
 }
 
+export interface CommitOutputOptions {
+  /** File system move (injectable for tests). Default {@link defaultMove}. */
+  move?: (from: string, to: string) => void;
+}
+
 export interface CommittedOutput {
-  /** Restores the previous output (used when the type check fails). */
+  /** Restores the previous output (used when the type check fails). Throws, keeping the backup, if a restore fails. */
   rollback(): void;
   /** Drops the backup of the previous output. */
   finalize(): void;
@@ -24,8 +31,18 @@ export interface CommittedOutput {
  * Writes all files into a staging directory first, then swaps them in: the models directory as a whole
  * (stale models disappear), every other file individually. Nothing in the target is touched before
  * the staging write succeeded; a failure during the swap restores what was there.
+ *
+ * Every backup move registers its restore immediately, so a failure between "old output moved away" and "new output
+ * moved in" still restores the old output. If a restore fails, the staging directory (with the backups) is kept and
+ * the error names it.
  */
-export function commitOutput(files: OutputFiles, modelsDir: string, stagingParent: string): CommittedOutput {
+export function commitOutput(
+  files: OutputFiles,
+  modelsDir: string,
+  stagingParent: string,
+  options: CommitOutputOptions = {},
+): CommittedOutput {
+  const move = options.move ?? defaultMove;
   fs.mkdirSync(stagingParent, { recursive: true });
   const staging = fs.mkdtempSync(path.join(stagingParent, '.ddd-web-sdk-'));
   const stagedModels = path.join(staging, 'models');
@@ -53,29 +70,45 @@ export function commitOutput(files: OutputFiles, modelsDir: string, stagingParen
     throw error;
   }
 
-  const done: Array<() => void> = [];
+  const undo: Array<() => void> = [];
   const rollback = (): void => {
-    for (const undo of done.reverse()) undo();
-    done.length = 0;
+    const failures: unknown[] = [];
+    for (const step of undo.reverse()) {
+      try {
+        step();
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    undo.length = 0;
+    if (failures.length > 0) {
+      throw new SdkGenerationError(
+        `Could not restore the previous output; the previous output is kept in ${staging} ` +
+          `(models.previous/, files.previous/): ${failures.map((failure) => (failure as Error).message).join('; ')}`,
+      );
+    }
     fs.rmSync(staging, { recursive: true, force: true });
   };
 
-  try {
-    const hadModels = fs.existsSync(modelsDir);
-    if (hadModels) move(modelsDir, backupModels);
-    move(stagedModels, modelsDir);
-    done.push(() => {
-      fs.rmSync(modelsDir, { recursive: true, force: true });
-      if (hadModels) move(backupModels, modelsDir);
+  /** Moves `target` to `backup` (if it exists) and `staged` to `target`; the restore is registered before the swap. */
+  const swap = (target: string, staged: string, backup: string, removeTarget: () => void): void => {
+    const state = { backedUp: false, movedIn: false };
+    undo.push(() => {
+      if (state.movedIn) removeTarget();
+      if (state.backedUp) move(backup, target);
     });
+    if (fs.existsSync(target)) {
+      move(target, backup);
+      state.backedUp = true;
+    }
+    move(staged, target);
+    state.movedIn = true;
+  };
+
+  try {
+    swap(modelsDir, stagedModels, backupModels, () => fs.rmSync(modelsDir, { recursive: true, force: true }));
     for (const single of singles) {
-      const existed = fs.existsSync(single.target);
-      if (existed) move(single.target, single.backup);
-      move(single.staged, single.target);
-      done.push(() => {
-        fs.rmSync(single.target, { force: true });
-        if (existed) move(single.backup, single.target);
-      });
+      swap(single.target, single.staged, single.backup, () => fs.rmSync(single.target, { force: true }));
     }
   } catch (error) {
     rollback();

@@ -49,7 +49,7 @@ export interface SdkApiConfig {
   baseApiImport?: string;
   /** Overrides `SdkConfig.skipUpdatePostTwins` for this api. */
   skipUpdatePostTwins?: boolean;
-  /** Added after the global `sideEffects`; the first match wins, so entries here are checked first. */
+  /** Added after the global `sideEffects`; the first match wins, so entries here are checked first. RegExp flags `g` / `y` are ignored for matching. */
   sideEffects?: SideEffectsOverride[];
   /** Any further RTK codegen option (`argSuffix`, `flattenArg`, `endpointOverrides`, `filterEndpoints`, …). */
   [rtkOption: string]: unknown;
@@ -72,8 +72,9 @@ export interface SdkConfig {
   /** Directory of generated model files. Default `<dir of first outputFile>/../models`. */
   modelsDir?: string;
   /**
-   * Skip the POST twin of an upsert: POST and PATCH on the same path with an identical summary → only
-   * the PATCH is generated. Default `false`.
+   * Skip the POST twin of an upsert (DDD `#[Update]` serves POST and PATCH): only the PATCH is generated. With
+   * `x-ddd-entity` both must be `upsert` of the same entity; without it summary, parameters, request body and
+   * responses must be identical. Conflicting annotations never skip. Default `false`.
    */
   skipUpdatePostTwins?: boolean;
   sideEffects?: SideEffectsOverride[];

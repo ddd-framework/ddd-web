@@ -7,12 +7,14 @@ import {
   type FetchBaseQueryError,
   type FetchBaseQueryMeta,
 } from '@reduxjs/toolkit/query';
-import { Mutex } from 'async-mutex';
 import type { DddTokens } from '../auth/types';
 import { applyDebugParams, readDebugFlags, type DddDebugOptions } from './debug';
 import { createDddRefresh, type DddRawBaseQuery, type DddRefreshFn } from './refresh';
 
 type MaybePromise<T> = T | Promise<T>;
+
+/** Result of one refresh attempt: new tokens stored, session ended, session replaced while refreshing, or thrown. */
+type RefreshOutcome = 'refreshed' | 'failed' | 'superseded' | 'error';
 
 /** What `getTokens` can see: the request's Redux context (no dispatch). */
 export type DddRequestContext = Pick<BaseQueryApi, 'getState' | 'extra' | 'endpoint' | 'type'>;
@@ -104,10 +106,11 @@ const withBearer = (args: FetchArgs, accessToken: string | null | undefined): Fe
  * Creates the RTK Query base query for a DDD backend.
  *
  * - Sends `Authorization: Bearer <accessToken>` from `getTokens()`.
- * - On a refresh-worthy failure (`shouldRefresh`, default 401) runs ONE mutex-guarded refresh and retries the request
- *   exactly once. Concurrent failures wait for the same refresh; a request whose token was already replaced by a
- *   refresh that finished meanwhile retries without refreshing again.
- * - No refresh token, or a rejected refresh → `onLogout()` and the original error is returned.
+ * - On a refresh-worthy failure (`shouldRefresh`, default 401) runs ONE shared refresh and retries the request exactly
+ *   once. Concurrent failures share that refresh and its result; a request whose failure predates a refresh that
+ *   finished meanwhile reuses that refresh's result instead of refreshing again.
+ * - No refresh token, or a rejected refresh → `onLogout()` once for that session and the original error is returned.
+ * - A refresh whose session was logged out or replaced while it ran is discarded (no `setTokens`, no retry).
  *
  * @example
  * export const baseApi = createApi({
@@ -151,44 +154,60 @@ export function createDddBaseQuery(options: DddBaseQueryOptions): DddBaseQuery {
     return fetchQuery(finalArgs, api, extraOptions as {});
   };
 
-  const mutex = new Mutex();
+  /**
+   * Refresh coordination. Every finished refresh attempt starts a new session generation and records its outcome; a
+   * request remembers the generation it started in. A refresh-worthy failure in the current generation runs (or
+   * joins) the one refresh of that generation; a failure from an older generation reuses the recorded outcome, so a
+   * late 401 after a failed refresh neither refreshes nor logs out again.
+   */
+  let generation = 0;
+  let lastOutcome: RefreshOutcome | null = null;
+  let inflight: Promise<void> | null = null;
 
   const currentAccessToken = async (api: BaseQueryApi): Promise<string | null> =>
     (await getTokens(api))?.accessToken ?? null;
 
-  /** Runs (or joins) the refresh. True when a newer access token than `usedToken` is available afterwards. */
-  const recover = async (usedToken: string | null, api: BaseQueryApi, extraOptions: unknown): Promise<boolean> => {
-    if (mutex.isLocked()) {
-      await mutex.waitForUnlock();
-      const token = await currentAccessToken(api);
-      return token !== null && token !== usedToken;
+  const runRefresh = async (api: BaseQueryApi, extraOptions: unknown): Promise<RefreshOutcome> => {
+    const refreshToken = (await getTokens(api))?.refreshToken ?? null;
+    const pair = refreshToken ? await refresh({ refreshToken, baseQuery: rawBaseQuery, api, extraOptions }) : null;
+    // The session may have ended (logout) or changed (another login) while the refresh ran: its result belongs to
+    // a session that is gone and must not be stored.
+    if (((await getTokens(api))?.refreshToken ?? null) !== refreshToken) return 'superseded';
+    if (!pair?.accessToken) {
+      await onLogout(api);
+      return 'failed';
     }
-    return mutex.runExclusive(async () => {
-      const tokens = await getTokens(api);
-      const token = tokens?.accessToken ?? null;
-      if (token !== null && token !== usedToken) return true; // refreshed by a request that finished just before
-      const refreshToken = tokens?.refreshToken ?? null;
-      const pair = refreshToken ? await refresh({ refreshToken, baseQuery: rawBaseQuery, api, extraOptions }) : null;
-      if (!pair?.accessToken) {
-        await onLogout(api);
-        return false;
-      }
-      await setTokens({ accessToken: pair.accessToken, refreshToken: pair.refreshToken ?? refreshToken }, api);
-      return true;
-    });
+    await setTokens({ accessToken: pair.accessToken, refreshToken: pair.refreshToken ?? refreshToken }, api);
+    return 'refreshed';
+  };
+
+  /** Runs or joins the refresh of `startGeneration`; returns the outcome that applies to a request of that generation. */
+  const recover = async (startGeneration: number, api: BaseQueryApi, extraOptions: unknown): Promise<RefreshOutcome | null> => {
+    if (generation === startGeneration && !inflight) {
+      inflight = (async () => {
+        try {
+          lastOutcome = await runRefresh(api, extraOptions);
+        } catch (error) {
+          lastOutcome = 'error';
+          throw error;
+        } finally {
+          generation++;
+          inflight = null;
+        }
+      })();
+    }
+    if (inflight) await inflight;
+    return lastOutcome;
   };
 
   return async (args, api, extraOptions) => {
-    await mutex.waitForUnlock();
+    // A request started during a refresh waits for it and then sends the current token.
+    while (inflight) await inflight.catch(() => undefined);
+    const startGeneration = generation;
     const request = toFetchArgs(args);
-    const usedToken = await currentAccessToken(api);
-    let result = await rawBaseQuery(withBearer(request, usedToken), api, extraOptions);
-
-    if (result.error && shouldRefresh(result.error, request)) {
-      if (await recover(usedToken, api, extraOptions)) {
-        result = await rawBaseQuery(withBearer(request, await currentAccessToken(api)), api, extraOptions);
-      }
-    }
-    return result;
+    const result = await rawBaseQuery(withBearer(request, await currentAccessToken(api)), api, extraOptions);
+    if (!result.error || !shouldRefresh(result.error, request)) return result;
+    if ((await recover(startGeneration, api, extraOptions)) !== 'refreshed') return result;
+    return rawBaseQuery(withBearer(request, await currentAccessToken(api)), api, extraOptions);
   };
 }

@@ -11,6 +11,8 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
+    env:
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: 0
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -28,16 +30,14 @@ jobs:
             echo "package.json contains workspace:/link:/file: specifiers" >&2
             exit 1
           fi
+      - name: Build output has every exports / bin target
+        run: node scripts/check-package.mjs .
       - name: Pack
         run: pnpm pack --pack-destination "$RUNNER_TEMP"
-      - name: Consumer install with npm and pnpm
-        run: |
-          TARBALL=$(ls "$RUNNER_TEMP"/mgamadeus-ddd-web-*.tgz)
-          for pm in npm pnpm; do
-            dir="$RUNNER_TEMP/consumer-$pm"
-            mkdir -p "$dir" && cp test/consumer/smoke.mjs "$dir/"
-            (cd "$dir" && echo '{"name":"consumer","private":true,"type":"module"}' > package.json \
-              && if [ "$pm" = npm ]; then npm install --no-audit --no-fund "$TARBALL" @reduxjs/toolkit; \
-                 else pnpm add "$TARBALL" @reduxjs/toolkit; fi \
-              && node smoke.mjs)
-          done
+      # Per package manager: tarball contents (exports / bin targets), runtime imports of every subpath, a strict
+      # TypeScript consumer (moduleResolution bundler and nodenext), ddd-web-sdk on the sample spec with a type check
+      # of the generated SDK, and link-skills.
+      - name: Consumer check with npm
+        run: test/consumer/run.sh "$(ls "$RUNNER_TEMP"/mgamadeus-ddd-web-*.tgz)" npm "$RUNNER_TEMP/consumer-npm"
+      - name: Consumer check with pnpm
+        run: test/consumer/run.sh "$(ls "$RUNNER_TEMP"/mgamadeus-ddd-web-*.tgz)" pnpm "$RUNNER_TEMP/consumer-pnpm"

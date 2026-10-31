@@ -136,11 +136,13 @@ function registryMatch(name: string, registry: NamespacePath[]): { segments: str
   return null;
 }
 
-function importSpecifier(fromFile: string, toFile: string): string {
+function importSpecifier(fromFile: string, toFile: string, esm: boolean): string {
   let relative = path.relative(path.dirname(fromFile), toFile.replace(/\.ts$/, '')).replace(/\\/g, '/');
   if (!relative.startsWith('.')) relative = `./${relative}`;
-  return relative;
+  return esm ? `${relative}.js` : relative;
 }
+
+const EXPORTED_NAME = /^export (?:type|interface) (\w+)/m;
 
 export interface ExtractModelsInput {
   /** Generated RTK source (types still inline). */
@@ -151,49 +153,75 @@ export interface ExtractModelsInput {
   registry: NamespacePath[];
   files: OutputFiles;
   logger: Logger;
+  /** Write `.js` import specifiers (`esmExtensions`), incl. `index.js` for the models barrel. */
+  esm?: boolean;
+  /** RTK names of the response types of text-only endpoints; only these become `string`. */
+  textResponseTypes?: ReadonlySet<string>;
 }
 
 /**
  * Moves every exported type of the RTK output into its own file under `modelsDir` (namespace folders
  * from the registry, `_endpoints/` for arg/response types, `_others/` otherwise), merges models shared
  * between apis, maintains the barrel `index.ts` and returns the api source importing from `modelsDir`.
+ *
+ * Every model file keeps one exported name across all apis. A model is named after its leaf (`…Books.Item` →
+ * `Item`); when another model file already uses that name, the name is qualified with namespace segments
+ * (`BooksItem`, then `EntitiesBooksItem`, …) so models of different namespaces never merge into one file and the
+ * barrel can export every model.
  */
 export function extractModels(input: ExtractModelsInput): string {
   const { modelsDir, registry, files, logger } = input;
+  const esm = input.esm === true;
+  const textResponseTypes = input.textResponseTypes ?? new Set<string>();
+  const indexPath = path.join(modelsDir, 'index.ts');
 
-  const findModelPath = (segments: string[], leafName: string): string | undefined =>
-    files.findPath(path.join(modelsDir, ...segments, `${leafName}.ts`));
+  // Exported name → model file (lower-case path), over everything already in the store (earlier apis, seeded files).
+  const nameOwners = new Map<string, string>();
+  for (const filePath of files.paths()) {
+    const relative = path.relative(modelsDir, filePath);
+    if (relative.startsWith('..') || path.isAbsolute(relative) || path.resolve(filePath) === path.resolve(indexPath)) continue;
+    const name = files.get(filePath)?.match(EXPORTED_NAME)?.[1];
+    if (name && !nameOwners.has(name)) nameOwners.set(name, path.resolve(filePath).toLowerCase());
+  }
 
-  const newTypeName = (oldName: string): string => {
+  const placement = (oldName: string): { filePath: string; leafName: string; segments: string[] } => {
     const match = registryMatch(oldName, registry);
-    if (!match) return oldName;
-    const existing = findModelPath(match.segments, match.leafName);
-    const existingName = existing ? files.get(existing)?.match(/^export (?:type|interface) (\w+)/m)?.[1] : undefined;
-    return existingName ?? match.leafName;
-  };
-
-  const targetPath = (oldName: string, newName: string): string => {
-    const match = registryMatch(oldName, registry);
-    if (match) return findModelPath(match.segments, match.leafName) ?? path.join(modelsDir, ...match.segments, `${match.leafName}.ts`);
-    if (/^(Get|Post|Put|Patch|Delete)/.test(oldName)) return path.join(modelsDir, '_endpoints', `${newName}.ts`);
-    return path.join(modelsDir, '_others', `${newName}.ts`);
+    if (match) {
+      const planned = path.join(modelsDir, ...match.segments, `${match.leafName}.ts`);
+      return { filePath: files.findPath(planned) ?? planned, leafName: match.leafName, segments: match.segments };
+    }
+    const folder = /^(Get|Post|Put|Patch|Delete)/.test(oldName) ? '_endpoints' : '_others';
+    return { filePath: path.join(modelsDir, folder, `${oldName}.ts`), leafName: oldName, segments: [] };
   };
 
   const originalNames = exportedTypeDeclarations(input.apiSource).map((declaration) => declaration.name);
   const renameMap = new Map<string, string>();
-  const reverseRename = new Map<string, string>();
   const targetByNewName = new Map<string, string>();
+  const nameByPath = new Map<string, string>();
   for (const oldName of originalNames) {
-    const name = newTypeName(oldName);
+    const { filePath, leafName, segments } = placement(oldName);
+    const pathKey = path.resolve(filePath).toLowerCase();
+    let name = nameByPath.get(pathKey) ?? files.get(filePath)?.match(EXPORTED_NAME)?.[1];
+    if (!name) {
+      const owner = (candidate: string): string | undefined => nameOwners.get(candidate);
+      name = leafName;
+      for (let depth = 1; owner(name) !== undefined && owner(name) !== pathKey && depth <= segments.length; depth++) {
+        name = segments.slice(-depth).join('') + leafName;
+      }
+      if (owner(name) !== undefined && owner(name) !== pathKey) name = oldName;
+      if (name !== leafName) logger.info(`  ${oldName}: leaf name ${leafName} is taken — exported as ${name}`);
+    }
+    nameOwners.set(name, pathKey);
+    nameByPath.set(pathKey, name);
     renameMap.set(oldName, name);
-    reverseRename.set(name, oldName);
-    targetByNewName.set(name, targetPath(oldName, name));
+    targetByNewName.set(name, filePath);
   }
 
   const renameRegex = alternation([...renameMap.keys()]);
   const renamedSource = renameRegex
     ? input.apiSource.replace(renameRegex, (_, name: string) => renameMap.get(name) ?? name)
     : input.apiSource;
+  const textTypes = new Set([...textResponseTypes].map((name) => renameMap.get(name) ?? name));
 
   const renamedDeclarations = exportedTypeDeclarations(renamedSource);
   const entries: Array<{ name: string; body: string; filePath: string }> = [];
@@ -210,9 +238,9 @@ export function extractModels(input: ExtractModelsInput): string {
   const dependencyRegex = alternation([...pathByName.keys()]);
 
   const strippedSource = stripDeclarations(renamedSource, renamedDeclarations);
-  const usedInApi = entries
-    .map((entry) => entry.name)
-    .filter((name) => new RegExp(`(?<![A-Za-z0-9_$])${escapeRegExp(name)}(?![A-Za-z0-9_$])`).test(strippedSource));
+  const usedInApi = [...new Set(entries.map((entry) => entry.name))].filter((name) =>
+    new RegExp(`(?<![A-Za-z0-9_$])${escapeRegExp(name)}(?![A-Za-z0-9_$])`).test(strippedSource),
+  );
 
   // Presentation DTOs are split per audience and share names with diverging shapes; re-exporting
   // them from one barrel would produce TS2308 duplicate exports.
@@ -227,25 +255,24 @@ export function extractModels(input: ExtractModelsInput): string {
       }
     }
     const importLines = [...dependencies]
-      .map((dependency) => `import { ${dependency} } from '${importSpecifier(filePath, pathByName.get(dependency)!)}';`)
+      .map((dependency) => `import { ${dependency} } from '${importSpecifier(filePath, pathByName.get(dependency)!, esm)}';`)
       .join('\n');
 
     // Text-response endpoints come out of RTK as `= /** status 200 */ {}`; `string` is what arrives.
-    const body2 = name.endsWith('ApiResponse') ? body.replace(/(=\s*\/\*\* status \d+\s*\*\/)\s*\{\}/g, '$1 string') : body;
+    const typedBody = textTypes.has(name) ? body.replace(/(=\s*\/\*\* status \d+[^*]*\*\/)\s*\{\}/g, '$1 string') : body;
 
     const existing = files.isGeneratedThisRun(filePath) ? files.get(filePath) : undefined;
     const content =
       existing !== undefined
-        ? mergeModel(existing, body2, importLines, name, logger)
-        : (importLines ? `${importLines}\n\n` : '') + `${body2}\n\nexport default ${name};\n`;
+        ? mergeModel(existing, typedBody, importLines, name, logger)
+        : (importLines ? `${importLines}\n\n` : '') + `${typedBody}\n\nexport default ${name};\n`;
     files.set(filePath, content);
 
     if (isPresentation(path.relative(modelsDir, filePath))) continue;
-    const relative = path.relative(modelsDir, filePath.replace(/\.ts$/, '')).replace(/\\/g, '/');
-    barrelEntries.push(`export * from '${relative.startsWith('.') ? relative : `./${relative}`}';`);
+    barrelEntries.push(`export * from '${importSpecifier(indexPath, filePath, esm)}';`);
   }
 
-  writeBarrel(files, path.join(modelsDir, 'index.ts'), barrelEntries);
+  writeBarrel(files, indexPath, barrelEntries);
 
   const others = entries.filter((entry) => path.relative(modelsDir, entry.filePath).split(path.sep)[0] === '_others');
   if (others.length > 0) {
@@ -253,23 +280,30 @@ export function extractModels(input: ExtractModelsInput): string {
   }
   logger.info(`  extracted ${entries.length} types`);
 
-  const modelsImport = importSpecifier(input.apiFilePath, path.join(modelsDir, 'index.ts')).replace(/\/index$/, '');
+  const modelsImport = esm
+    ? importSpecifier(input.apiFilePath, indexPath, true)
+    : importSpecifier(input.apiFilePath, indexPath, false).replace(/\/index$/, '');
   return `import {\n  ${usedInApi.join(',\n  ')}\n} from '${modelsImport}';\n\n${strippedSource}`;
 }
 
-/** Barrel: previous entries first, deduplicated by leaf name (same leaf in two namespaces → TS2308). */
+/**
+ * Barrel: previous entries first, then new ones, each file once. Model names are unique per file (see
+ * {@link extractModels}), so no entry is dropped; entries whose file no longer exists in the store are removed.
+ */
 function writeBarrel(files: OutputFiles, indexPath: string, newEntries: string[]): void {
   const existing = (files.get(indexPath) ?? '')
     .split('\n')
     .map((line) => line.trim())
     .filter((line) => line.startsWith('export *'));
-  const all = [...existing, ...newEntries.filter((entry) => !existing.includes(entry))];
-  const seenLeaves = new Set<string>();
   const merged: string[] = [];
-  for (const entry of all) {
-    const leaf = entry.match(/\/([A-Za-z0-9_$]+)["'];?\s*$/)?.[1] ?? entry;
-    if (seenLeaves.has(leaf)) continue;
-    seenLeaves.add(leaf);
+  const seen = new Set<string>();
+  for (const entry of [...existing, ...newEntries]) {
+    const specifier = entry.match(/from ['"](.+)['"];?\s*$/)?.[1];
+    if (!specifier) continue;
+    const target = path.resolve(path.dirname(indexPath), specifier.replace(/\.js$/, '')) + '.ts';
+    const key = target.toLowerCase();
+    if (seen.has(key) || !files.findPath(target)) continue;
+    seen.add(key);
     merged.push(entry);
   }
   files.set(indexPath, `${merged.join('\n')}\n`);

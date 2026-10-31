@@ -1,5 +1,4 @@
 import type { EndpointInfo } from './endpoints';
-import { toOpenApiPath } from './endpoints';
 import type { Logger } from './log';
 import { operationKey } from './openapi';
 import type { OperationIndex, OperationInfo } from './operations';
@@ -15,10 +14,10 @@ function segmentToPascal(segment: string): string {
     .join('');
 }
 
-/** Fallback when the operation has no matching tag: the last URL segment that names a known tag. */
-function tagFromUrl(url: string, lookup: Map<string, string>): string | null {
+/** Fallback when the operation has no matching tag: the last path segment that names a known tag. */
+function tagFromPath(path: string, lookup: Map<string, string>): string | null {
   let matched: string | null = null;
-  for (const segment of url.replace(/\$\{[^}]+\}/g, '').split('/').filter(Boolean)) {
+  for (const segment of path.replace(/\{[^}]+\}/g, '').split('/').filter(Boolean)) {
     matched = lookup.get(segmentToPascal(segment).toLowerCase()) ?? matched;
   }
   return matched;
@@ -32,14 +31,15 @@ function tagFromOperation(info: OperationInfo | undefined, audience: string, loo
   return null;
 }
 
-function trailingArgName(url: string): string | null {
-  return url.match(/\$\{queryArg\.([A-Za-z0-9_]+)\}\/?\s*$/)?.[1] ?? null;
+/** Name of the placeholder that ends the path (`/books/{bookId}` → `bookId`). */
+function trailingPlaceholder(path: string): string | null {
+  return path.match(/\{([^}]+)\}\/?$/)?.[1] ?? null;
 }
 
 /** `/<collection>/{id}` where the collection segment names the tag → single entity; otherwise a filter arg. */
-function isPrimaryEntityUrl(url: string, tag: string): boolean {
-  const segments = url
-    .replace(/\$\{queryArg\.[A-Za-z0-9_]+\}\/?\s*$/, '')
+function isPrimaryEntityPath(path: string, tag: string): boolean {
+  const segments = path
+    .replace(/\{[^}]+\}\/?$/, '')
     .split('/')
     .filter(Boolean);
   const last = segments[segments.length - 1];
@@ -54,13 +54,14 @@ interface TagExpression {
 
 const list = (tag: string): string => `{ type: '${tag}' as const, id: 'LIST' }`;
 const broad = (tag: string): string => `{ type: '${tag}' as const }`;
-const byArg = (tag: string, arg: string): string => `{ type: '${tag}' as const, id: arg.${arg} }`;
+/** `accessor` reads the id from the endpoint argument, e.g. `arg.bookId` (or `arg` with `flattenArg`). */
+const byArg = (tag: string, accessor: string): string => `{ type: '${tag}' as const, id: ${accessor} }`;
 const withArg = (items: string): string => `(_result: unknown, _error: unknown, arg: any) => [${items}]`;
 
 /** Tags from `x-ddd-entity`: upsert/delete invalidate LIST + the entity, queries provide by id or LIST. */
 function entityTagExpression(endpoint: EndpointInfo, info: OperationInfo, tag: string): TagExpression {
   const identity = info.entity?.identity?.startsWith('path:') ? info.entity.identity.slice('path:'.length) : null;
-  const pathIdentity = identity && endpoint.url.includes(`\${queryArg.${identity}}`) ? identity : null;
+  const pathIdentity = identity ? (endpoint.pathArgs[identity] ?? null) : null;
   if (endpoint.buildType === 'query') {
     if (pathIdentity && info.entity?.action !== 'list') {
       return { key: 'providesTags', line: withArg(byArg(tag, pathIdentity)) };
@@ -74,24 +75,20 @@ function entityTagExpression(endpoint: EndpointInfo, info: OperationInfo, tag: s
 }
 
 /**
- * URL-shape heuristic (specs without `x-ddd-entity`):
- *   GET single → provides by id;  GET list/filter → provides LIST;  POST → invalidates LIST;
- *   PATCH/PUT single → by id;  PATCH/PUT list URL (id in body) → LIST + broad;  DELETE single → by id + LIST.
+ * Path-shape heuristic (specs without `x-ddd-entity`):
+ *   GET single → provides by id;  GET list/filter → provides LIST;
+ *   every write → invalidates LIST + the whole entity tag. Without entity metadata a write's reach is unknown (a POST
+ *   may be an upsert of an existing entity, a PATCH may change what lists show), so it invalidates conservatively.
  */
 function heuristicTagExpression(endpoint: EndpointInfo, tag: string): TagExpression {
-  const trailing = trailingArgName(endpoint.url);
-  const single = trailing !== null && isPrimaryEntityUrl(endpoint.url, tag) ? trailing : null;
-  const method = endpoint.method.toUpperCase();
+  const trailing = trailingPlaceholder(endpoint.path);
+  const single = trailing !== null && isPrimaryEntityPath(endpoint.path, tag) ? (endpoint.pathArgs[trailing] ?? null) : null;
   if (endpoint.buildType === 'query') {
     return single
       ? { key: 'providesTags', line: withArg(byArg(tag, single)) }
       : { key: 'providesTags', line: `[${list(tag)}]` };
   }
-  if (method === 'GET') return { key: 'invalidatesTags', line: `[${list(tag)}, ${broad(tag)}]` };
-  if (method === 'DELETE' && single) return { key: 'invalidatesTags', line: withArg(`${byArg(tag, single)}, ${list(tag)}`) };
-  if ((method === 'PATCH' || method === 'PUT') && single) return { key: 'invalidatesTags', line: withArg(byArg(tag, single)) };
-  if (method === 'PATCH' || method === 'PUT') return { key: 'invalidatesTags', line: `[${list(tag)}, ${broad(tag)}]` };
-  return { key: 'invalidatesTags', line: `[${list(tag)}]` };
+  return { key: 'invalidatesTags', line: `[${list(tag)}, ${broad(tag)}]` };
 }
 
 export interface EnhanceInput {
@@ -123,7 +120,7 @@ export function buildEnhancedEndpoints(input: EnhanceInput): EnhanceResult {
   let urlFallbacks = 0;
 
   for (const endpoint of endpoints) {
-    const info = index.byKey.get(operationKey(endpoint.method, toOpenApiPath(endpoint.url)));
+    const info = index.byKey.get(operationKey(endpoint.method, endpoint.path));
     let tag: string | null;
     if (info?.entity) {
       tag = entityTag(info.entity.schema, lookup);
@@ -132,7 +129,7 @@ export function buildEnhancedEndpoints(input: EnhanceInput): EnhanceResult {
     } else {
       tag = tagFromOperation(info, audience, lookup);
       if (!tag) {
-        tag = tagFromUrl(endpoint.url, lookup);
+        tag = tagFromPath(endpoint.path, lookup);
         if (tag) urlFallbacks++;
       }
     }

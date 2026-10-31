@@ -48,8 +48,8 @@ export function isValidDddDate(value: string): boolean {
 
 /**
  * Parses a DDD date-time to epoch ms. Offset-less values (`Y-m-d H:i:s`, `Y-m-d\TH:i:s`, `Y-m-d H:i`, optional
- * fraction) and plain dates (`Y-m-d`, midnight) are read as UTC and calendar-checked; values carrying an offset or
- * `Z` are parsed as given. Returns `null` for absent or invalid input.
+ * fraction) and plain dates (`Y-m-d`, midnight) are read as UTC; values carrying an offset or `Z` are parsed as
+ * given. All forms are calendar-checked. Returns `null` for absent or invalid input.
  */
 export function parseDddDateTimeMs(value: string | null | undefined): number | null {
   if (!value) {
@@ -73,7 +73,19 @@ export function parseDddDateTimeMs(value: string | null | undefined): number | n
   if (date) {
     return utcMs(Number(date[1]), Number(date[2]), Number(date[3]));
   }
-  if (!/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})$/i.test(trimmed)) {
+  const withOffset = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})$/i.exec(trimmed);
+  // The calendar check applies to the written components as well (2026-02-30T00:00:00Z is invalid, not March 2nd).
+  if (
+    !withOffset ||
+    utcMs(
+      Number(withOffset[1]),
+      Number(withOffset[2]),
+      Number(withOffset[3]),
+      Number(withOffset[4]),
+      Number(withOffset[5]),
+      Number(withOffset[6] ?? 0),
+    ) === null
+  ) {
     return null;
   }
   const parsed = Date.parse(trimmed.replace(' ', 'T'));

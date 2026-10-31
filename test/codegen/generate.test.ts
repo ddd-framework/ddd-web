@@ -105,7 +105,10 @@ describe('generateSdk on the sample spec', () => {
   it('keeps the URL heuristic without x-ddd-entity', () => {
     expect(enhancedEntry(enhanced, 'getApiAdminLibraryAuthorsByAuthorId')).toContain('id: arg.authorId');
     expect(enhancedEntry(enhanced, 'getApiAdminLibraryAuthorsList')).toContain(`id: "LIST"`);
-    expect(enhancedEntry(enhanced, 'postApiAdminLibraryBooksByBookIdPublish')).toContain(`invalidatesTags: [{ type: "Books" as const, id: "LIST" }]`);
+    // unknown writes invalidate the whole entity tag
+    expect(enhancedEntry(enhanced, 'postApiAdminLibraryBooksByBookIdPublish')).toContain(
+      `invalidatesTags: [ { type: "Books" as const, id: "LIST" }, { type: "Books" as const }, ]`,
+    );
   });
 
   it('writes the tag types file', () => {

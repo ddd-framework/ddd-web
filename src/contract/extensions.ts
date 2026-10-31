@@ -155,7 +155,7 @@ export type HttpMethod = 'get' | 'head' | 'post' | 'put' | 'patch' | 'delete' | 
  * Whether an operation has side effects (contract defaults, Appendix A.6): `x-ddd-side-effects` wins when present,
  * otherwise `false` for GET/HEAD/OPTIONS/TRACE and `true` for POST/PUT/PATCH/DELETE.
  */
-export function hasSideEffects(method: string, operation?: DddOperationExtensions | null): boolean {
+export function hasSideEffects(method: string, operation?: Pick<DddOperationExtensions, 'x-ddd-side-effects'> | null): boolean {
   const explicit = operation?.['x-ddd-side-effects'];
   if (typeof explicit === 'boolean') {
     return explicit;

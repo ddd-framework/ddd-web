@@ -1,4 +1,4 @@
-import { safeLocalStorage, type DddStorageLike } from './safeStorage';
+import { createSafeStorage, safeLocalStorage, type DddStorageLike } from './safeStorage';
 import type { DddTokens, DddTokensUpdate } from './types';
 
 /** Persists the token pair. Implementations must never throw. */
@@ -49,8 +49,10 @@ export function createLocalStorageTokenStorage(options: LocalStorageTokenStorage
     refreshKey = 'refreshToken',
     serialize = (accessToken: string) => accessToken,
     deserialize = (raw: string) => raw,
-    storage = safeLocalStorage,
   } = options;
+  // An injected storage may throw as well; the TokenStorage contract says never throw.
+  const injected = options.storage;
+  const storage = injected ? createSafeStorage(() => injected) : safeLocalStorage;
 
   const readAccess = (): string | null => {
     const raw = storage.getItem(accessKey);
@@ -62,15 +64,20 @@ export function createLocalStorageTokenStorage(options: LocalStorageTokenStorage
     }
   };
 
-  const writeAccess = (accessToken: string): void => {
-    let value: string;
+  const trySerialize = (accessToken: string, previous: string | null): string | null => {
     try {
-      value = serialize(accessToken, storage.getItem(accessKey));
+      return serialize(accessToken, previous);
     } catch {
-      // The stored value is unreadable for the serializer: start from scratch.
-      value = serialize(accessToken, null);
+      return null;
     }
-    storage.setItem(accessKey, value);
+  };
+
+  const writeAccess = (accessToken: string): void => {
+    // An unreadable stored value: start from scratch. A serializer that fails on both: the old (stale) token is
+    // removed rather than kept as if it were the new one.
+    const value = trySerialize(accessToken, storage.getItem(accessKey)) ?? trySerialize(accessToken, null);
+    if (value === null) storage.removeItem(accessKey);
+    else storage.setItem(accessKey, value);
   };
 
   return {

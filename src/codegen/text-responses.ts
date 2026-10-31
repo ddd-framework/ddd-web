@@ -1,10 +1,8 @@
 import type { EndpointInfo } from './endpoints';
 import type { OpenApiDocument } from './openapi';
-import { listOperations } from './openapi';
+import { listOperations, operationKey } from './openapi';
 
 const TEXT_CONTENT_TYPES = ['text/html', 'text/plain', 'text/xml'];
-
-const normalizePath = (value: string): string => value.replace(/\$\{[^}]+\}/g, '{p}').replace(/\{[^}]+\}/g, '{p}');
 
 /** Endpoints whose 2xx responses are text only; RTK must not JSON-parse them. */
 export function detectTextResponseEndpoints(doc: OpenApiDocument, endpoints: EndpointInfo[]): Set<string> {
@@ -15,14 +13,14 @@ export function detectTextResponseEndpoints(doc: OpenApiDocument, endpoints: End
       if (Number.isNaN(code) || code < 200 || code >= 300) continue;
       const types = Object.keys(response?.content ?? {});
       if (types.length > 0 && types.every((type) => TEXT_CONTENT_TYPES.some((text) => type.startsWith(text)))) {
-        textOperations.add(`${method.toUpperCase()}:${normalizePath(path)}`);
+        textOperations.add(operationKey(method, path));
       }
     }
   }
   const keys = new Set<string>();
   if (textOperations.size === 0) return keys;
   for (const endpoint of endpoints) {
-    if (textOperations.has(`${endpoint.method.toUpperCase()}:${normalizePath(endpoint.url)}`)) keys.add(endpoint.key);
+    if (textOperations.has(operationKey(endpoint.method, endpoint.path))) keys.add(endpoint.key);
   }
   return keys;
 }

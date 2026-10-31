@@ -7,7 +7,7 @@ export interface DddNormalizedError {
    * `CUSTOM_ERROR`); a `PARSING_ERROR` reports the original HTTP status. `null` when unknown.
    */
   status: number | string | null;
-  /** Human-readable message: the backend's `error` key first, then generic fallbacks. */
+  /** Human-readable message: the backend's `error` key first, then a text body, then generic fallbacks. */
   message: string;
   /** The backend's `validationErrors` exactly as received (present on validation 400s), else `null`. */
   validationErrors: unknown;
@@ -71,6 +71,8 @@ export function normalizeDddError(error: unknown, fallbackMessage: string = DEFA
     nonEmptyString(bodyRecord?.message) ??
     // RTK's non-HTTP errors carry the reason in `error` (e.g. "TypeError: Failed to fetch").
     (body === undefined || typeof body === 'string' ? nonEmptyString(error.error) : null) ??
+    // A non-JSON error body (e.g. a download endpoint answering with plain text) is the message itself.
+    nonEmptyString(body)?.trim() ??
     nonEmptyString(error.message) ??
     fallbackMessage;
 

@@ -12,39 +12,38 @@ export function sanitizeColumnSearches(columnSearches: Record<string, string>): 
   );
 }
 
-function stableValue(value: unknown): string {
-  if (value === null || value === undefined) {
-    return '';
-  }
-  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-    return String(value);
+/** JSON form of a key value; values JSON cannot represent (BigInt, cycles) fall back to their string form. */
+function keyValue(value: unknown): unknown {
+  if (value === undefined) {
+    return null;
   }
   try {
-    return JSON.stringify(value) ?? String(value);
+    JSON.stringify(value);
+    return value;
   } catch {
     return String(value);
   }
 }
 
+const byKey = ([a]: [string, unknown], [b]: [string, unknown]): number => (a < b ? -1 : a > b ? 1 : 0);
+
 /**
- * Builds a stable key from static query arguments (sorted by name, `name=value` joined by `&`), e.g. to reset paging
- * when they change. Non-primitive values are keyed by their JSON form.
+ * Builds a stable key from static query arguments, e.g. to reset paging when they change: the arguments sorted by
+ * name, serialised as a JSON list of `[name, value]` pairs (collision-free: `{ a: '1&b=2' }` and `{ a: '1', b: '2' }`
+ * differ). `undefined` counts as `null`. Empty for no arguments.
  */
 export function buildStaticArgsKey(staticArgs: Record<string, unknown> | null | undefined): string {
   if (!staticArgs) {
     return '';
   }
-  return Object.entries(staticArgs)
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    .map(([key, value]) => `${key}=${stableValue(value)}`)
-    .join('&');
+  const entries = Object.entries(staticArgs).sort(byKey);
+  return entries.length === 0 ? '' : JSON.stringify(entries.map(([key, value]) => [key, keyValue(value)]));
 }
 
-/** Builds a stable key from per-column search state (non-empty values, sorted by column key). */
+/** Builds a stable key from per-column search state (non-empty values, sorted by column key, JSON pairs). */
 export function buildColumnSearchesKey(searches: Record<string, string>): string {
-  return Object.entries(searches)
+  const entries = Object.entries(searches)
     .filter(([, value]) => value.length > 0)
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    .map(([key, value]) => `${key}=${value}`)
-    .join('&');
+    .sort(byKey);
+  return entries.length === 0 ? '' : JSON.stringify(entries);
 }

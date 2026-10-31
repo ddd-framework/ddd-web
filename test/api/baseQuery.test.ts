@@ -132,6 +132,97 @@ describe('createDddBaseQuery', () => {
     expect(requests).toHaveLength(3); // two originals + one refresh, no retries
   });
 
+  it('a refresh that returns the same access token still retries every waiting request', async () => {
+    // e.g. a backend that re-validates the session but keeps the token string
+    let refreshed = false;
+    const requests: string[] = [];
+    const fetchFn = vi.fn(async (input: RequestInfo) => {
+      const request = input as Request;
+      const url = new URL(request.url);
+      requests.push(url.pathname);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      if (url.pathname === REFRESH) {
+        refreshed = true;
+        return json(200, { accessToken: 'same', refreshToken: 'r1' });
+      }
+      return refreshed ? json(200, { ok: true }) : json(401, { error: 'Unauthorized' });
+    });
+    const tokens: DddTokens = { accessToken: 'same', refreshToken: 'r1' };
+    const baseQuery = createDddBaseQuery({
+      baseUrl: 'https://api.test',
+      refreshPath: REFRESH,
+      getTokens: () => tokens,
+      setTokens: (next) => void Object.assign(tokens, next),
+      onLogout: vi.fn(),
+      fetchOptions: { fetchFn },
+    });
+    const results = await Promise.all(['/a', '/b', '/c'].map((url) => baseQuery(url, makeApi(), {})));
+    expect(results.map((result) => (result.data as { ok?: boolean } | undefined)?.ok)).toEqual([true, true, true]);
+    expect(requests.filter((pathname) => pathname === REFRESH)).toHaveLength(1);
+  });
+
+  it('a 401 arriving after a failed refresh does not log out a second time', async () => {
+    let releaseSlow: () => void = () => {};
+    const slowGate = new Promise<void>((resolve) => {
+      releaseSlow = resolve;
+    });
+    const fetchFn = vi.fn(async (input: RequestInfo) => {
+      const request = input as Request;
+      const url = new URL(request.url);
+      if (url.pathname === '/slow') await slowGate;
+      else await new Promise((resolve) => setTimeout(resolve, 5));
+      if (url.pathname === REFRESH) return json(401, { error: 'Invalid refresh token' });
+      return json(401, { error: 'Unauthorized' });
+    });
+    const onLogout = vi.fn();
+    const tokens: DddTokens = { accessToken: 'old', refreshToken: 'r1' };
+    const baseQuery = createDddBaseQuery({
+      baseUrl: 'https://api.test',
+      refreshPath: REFRESH,
+      getTokens: () => tokens,
+      setTokens: (next) => void Object.assign(tokens, next),
+      onLogout,
+      fetchOptions: { fetchFn },
+    });
+    const slow = baseQuery('/slow', makeApi(), {});
+    await baseQuery('/fast', makeApi(), {}); // 401 → refresh rejected → logout
+    expect(onLogout).toHaveBeenCalledTimes(1);
+    releaseSlow();
+    const late = await slow; // its 401 belongs to the session that already failed
+    expect((late.error as FetchBaseQueryError).status).toBe(401);
+    expect(onLogout).toHaveBeenCalledTimes(1);
+  });
+
+  it('discards a refresh result when the session was logged out while the refresh ran', async () => {
+    let releaseRefresh: () => void = () => {};
+    const refreshGate = new Promise<void>((resolve) => {
+      releaseRefresh = resolve;
+    });
+    const tokens: DddTokens = { accessToken: 'old', refreshToken: 'r1' };
+    const setTokens = vi.fn((next: DddTokens): void => void Object.assign(tokens, next));
+    const fetchFn = vi.fn(async () => json(401, { error: 'Unauthorized' }));
+    const baseQuery = createDddBaseQuery({
+      baseUrl: 'https://api.test',
+      refresh: async () => {
+        await refreshGate;
+        return { accessToken: 'new', refreshToken: 'r2' };
+      },
+      getTokens: () => tokens,
+      setTokens,
+      onLogout: vi.fn(),
+      fetchOptions: { fetchFn },
+    });
+    const pending = baseQuery('/a', makeApi(), {});
+    await new Promise((resolve) => setTimeout(resolve, 5)); // refresh in flight
+    tokens.accessToken = null; // the user logs out meanwhile
+    tokens.refreshToken = null;
+    releaseRefresh();
+    const result = await pending;
+    expect(setTokens).not.toHaveBeenCalled();
+    expect(tokens).toEqual({ accessToken: null, refreshToken: null });
+    expect((result.error as FetchBaseQueryError).status).toBe(401);
+  });
+
   it('missing refresh token → onLogout without calling the refresh endpoint', async () => {
     const { baseQuery, onLogout, tokens, refreshCalls } = setup();
     tokens.refreshToken = null;

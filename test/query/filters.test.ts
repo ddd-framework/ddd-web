@@ -54,7 +54,7 @@ describe('escaping', () => {
     expect(formatFilterLiteral(false)).toBe("'0'");
     expect(formatFilterLiteral(null)).toBe('null');
     expect(formatFilterLiteral(new Date(Date.UTC(2026, 0, 2, 3, 4, 5)))).toBe("'2026-01-02 03:04:05'");
-    expect(formatFilterLiteral(['a', 1, null])).toBe("['a','1',null]");
+    expect(formatFilterLiteral(['a', 1, null])).toBe('["a","1",null]');
     expect(() => formatFilterLiteral(Number.NaN)).toThrow(QueryOptionsError);
     expect(() => formatFilterLiteral(1e21)).toThrow(QueryOptionsError);
   });
@@ -88,20 +88,20 @@ describe('buildFieldFilter', () => {
 describe('list operators (regression: in built a wildcard string)', () => {
   it('builds in / ni as bracket lists the backend decodes to arrays', () => {
     const inFilter = buildInFilter('id', [1, 2]);
-    expect(inFilter).toBe("id in ['1','2']");
+    expect(inFilter).toBe('id in ["1","2"]');
     expect(inFilter).not.toContain('*');
     expect(parseFilter(inFilter)).toEqual({ property: 'id', operator: 'in', value: ['1', '2'] });
 
     const niFilter = buildNotInFilter('status', ['DRAFT', "O'Neil"]);
-    expect(niFilter).toBe("status ni ['DRAFT','O\\'Neil']");
+    expect(niFilter).toBe(`status ni ["DRAFT","O'Neil"]`);
     expect(parseFilter(niFilter)).toEqual({ property: 'status', operator: 'ni', value: ['DRAFT', "O'Neil"] });
 
-    expect(buildListFilter('id', 'in', ['7'])).toBe("id in ['7']");
+    expect(buildListFilter('id', 'in', ['7'])).toBe('id in ["7"]');
   });
 
   it('builds bw with exactly two items', () => {
     const between = buildBetweenFilter('published', '2026-01-01', '2026-12-31');
-    expect(between).toBe("published bw ['2026-01-01','2026-12-31']");
+    expect(between).toBe('published bw ["2026-01-01","2026-12-31"]');
     expect(parseFilter(between)).toEqual({
       property: 'published',
       operator: 'bw',
@@ -152,7 +152,7 @@ describe('buildIntEqFilter', () => {
 describe('buildFullDayFilter (regression: accepted impossible dates)', () => {
   it('builds a full UTC day for a real date', () => {
     expect(buildFullDayFilter('2026-10-31', 'created')).toBe(
-      "created bw ['2026-10-31 00:00:00','2026-10-31 23:59:59']",
+      'created bw ["2026-10-31 00:00:00","2026-10-31 23:59:59"]',
     );
     expect(buildFullDayFilter('2024-02-29', 'created')).toBeDefined();
   });
@@ -218,6 +218,6 @@ describe('anyOfFilters', () => {
 
   it('nests correctly inside combineFilters', () => {
     const any = anyOfFilters(buildInFilter('id', [1, 2]), buildNullFilter('parentId'));
-    expect(combineFilters("visible eq '1'", any)).toBe("visible eq '1' and (id in ['1','2'] or parentId eq null)");
+    expect(combineFilters("visible eq '1'", any)).toBe(`visible eq '1' and (id in ["1","2"] or parentId eq null)`);
   });
 });

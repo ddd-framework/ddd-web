@@ -121,7 +121,7 @@ describe('filter definitions', () => {
   });
 
   it('buildDefinedFilter validates, then builds; DAY dates become Y-m-d', () => {
-    expect(buildDefinedFilter(books, 'id', 'in', [1, 2])).toBe("id in ['1','2']");
+    expect(buildDefinedFilter(books, 'id', 'in', [1, 2])).toBe('id in ["1","2"]');
     expect(buildDefinedFilter(books, 'releaseDay', 'eq', new Date(Date.UTC(2026, 9, 31, 22)))).toBe(
       "releaseDay eq '2026-10-31'",
     );

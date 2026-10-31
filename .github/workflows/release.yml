@@ -1,0 +1,78 @@
+name: Release
+
+# Pushing a tag vX.Y.Z (the version in package.json) builds, verifies and STAGES the package on npm via trusted
+# publishing (OIDC, no token). A staged version is not public until a maintainer approves it with 2FA:
+#   npm stage list @mgamadeus/ddd-web
+#   npm stage approve <stage-id>
+# npm side (once): a trusted publisher for this repository and workflow file (release.yml) with stage publish allowed,
+# e.g. `npm trust github @mgamadeus/ddd-web --repository mgamadeus/ddd-web --file release.yml --allow-stage-publish`.
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: 0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - name: Enable corepack (pnpm version from package.json)
+        run: npm i -g corepack@latest && corepack enable
+      # `npm stage publish` exists from npm 11.15.0 on (trusted publishing / OIDC from 11.5.1); stage publish
+      # inherits publish's OIDC token exchange.
+      - name: Install npm with staged publishing
+        run: |
+          npm install -g npm@11
+          node -e '
+            const [major, minor] = process.argv[1].split(".").map(Number);
+            if (major < 11 || (major === 11 && minor < 15)) { console.error(`npm ${process.argv[1]} < 11.15.0`); process.exit(1); }
+          ' "$(npm --version)"
+          npm --version
+      - name: Tag matches package.json version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if [ "${GITHUB_REF_NAME}" != "v${VERSION}" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match package.json version ${VERSION} (expected v${VERSION})" >&2
+            exit 1
+          fi
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - name: Published manifest has no workspace-only specifiers
+        run: |
+          if grep -E '"(workspace|link|file):' package.json; then
+            echo "package.json contains workspace:/link:/file: specifiers" >&2
+            exit 1
+          fi
+      - name: Pack
+        run: pnpm pack --pack-destination "$RUNNER_TEMP"
+      - name: Tarball has every exports / bin target and ships the agent skills
+        run: |
+          mkdir -p "$RUNNER_TEMP/extracted"
+          tar -xzf "$(ls "$RUNNER_TEMP"/mgamadeus-ddd-web-*.tgz)" -C "$RUNNER_TEMP/extracted"
+          node scripts/check-package.mjs "$RUNNER_TEMP/extracted/package" --require-skills
+      - name: Consumer check with npm
+        run: test/consumer/run.sh "$(ls "$RUNNER_TEMP"/mgamadeus-ddd-web-*.tgz)" npm "$RUNNER_TEMP/consumer-npm"
+      - name: Consumer check with pnpm
+        run: test/consumer/run.sh "$(ls "$RUNNER_TEMP"/mgamadeus-ddd-web-*.tgz)" pnpm "$RUNNER_TEMP/consumer-pnpm"
+      # The verified tarball itself is staged (no rebuild). Prerelease versions (x.y.z-…) need an explicit dist-tag.
+      - name: Stage publish (trusted publishing)
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          case "$VERSION" in *-*) DIST_TAG=next ;; *) DIST_TAG=latest ;; esac
+          npm stage publish "$(ls "$RUNNER_TEMP"/mgamadeus-ddd-web-*.tgz)" --tag "$DIST_TAG" --access public

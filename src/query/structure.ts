@@ -3,8 +3,8 @@ import type { FilterJoinOperator } from '../contract/operators';
 /**
  * Returns the join operators (`and` / `or`) that occur at the top level of a filter expression — outside quoted
  * literals, bracket lists and parentheses. Tokenisation mirrors `FiltersOptionsParser`: single-quoted literals with
- * `\'` / `\\` escapes, double-quoted items inside lists, case-insensitive keywords that must be followed by
- * whitespace, a bracket or the end of input.
+ * `\'` / `\\` escapes, double-quoted items inside lists, case-insensitive keywords that follow a term (whitespace
+ * optional) and are followed by whitespace, a parenthesis or the end of input.
  */
 export function topLevelJoinOperators(expression: string): Set<FilterJoinOperator> {
   const found = new Set<FilterJoinOperator>();
@@ -37,8 +37,11 @@ export function topLevelJoinOperators(expression: string): Set<FilterJoinOperato
     if (depth > 0) {
       continue;
     }
+    // The backend tries `and` / `or` right after a term, with or without whitespace: after a closing quote,
+    // bracket or parenthesis, a number literal or `null` (`a eq '1'or b eq '2'` is valid). A false positive (e.g. an
+    // identifier ending in a digit) only adds parentheses; a missed keyword would change the meaning.
     const previous = index === 0 ? ' ' : (expression[index - 1] as string);
-    if (!/\s|\)/.test(previous)) {
+    if (!/[\s)\]'"0-9]/.test(previous) && !/null$/i.test(expression.slice(Math.max(0, index - 4), index))) {
       continue;
     }
     for (const keyword of ['and', 'or'] as const) {

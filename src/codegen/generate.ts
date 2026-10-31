@@ -91,42 +91,82 @@ export async function generateSdk(options: GenerateSdkOptions = {}): Promise<Gen
   const partial = apis.length < allApis.length;
   logger.info(`${apis.length} api(s): ${apis.map((api) => api.exportName).join(', ')}${partial ? ' (partial run)' : ''}`);
 
+  // Models are shared between apis. A partial run therefore still reads every configured spec and rebuilds the
+  // shared models from all of them (in config order, as a full run does); only the selected apis' files are written.
+  const selected = new Set(apis.map((api) => api.stem));
+  const pipeline: Array<{ api: ResolvedApi; write: boolean }> = allApis.map((api) => ({
+    api: apis.find((candidate) => candidate.stem === api.stem) ?? api,
+    write: selected.has(api.stem),
+  }));
+
   // Each spec is loaded once and handed to every step.
   const specCache = new Map<string, Promise<OpenApiDocument>>();
-  const specs = await Promise.all(
-    apis.map((api) => {
-      if (!specCache.has(api.schemaSource)) {
-        logger.info(`loading ${api.schemaSource}`);
-        specCache.set(api.schemaSource, loadSpec(api.schemaSource));
+  const loadOnce = (api: ResolvedApi): Promise<OpenApiDocument> => {
+    if (!specCache.has(api.schemaSource)) {
+      logger.info(`loading ${api.schemaSource}`);
+      specCache.set(api.schemaSource, loadSpec(api.schemaSource));
+    }
+    return specCache.get(api.schemaSource)!;
+  };
+  const loadedSpecs = await Promise.all(
+    pipeline.map(async ({ api, write }) => {
+      if (write) return loadOnce(api);
+      try {
+        return await loadOnce(api);
+      } catch (error) {
+        logger.warn(
+          `${api.exportName}: spec not loadable (${(error as Error).message}) — its models are kept from the previous ` +
+            'output; models it shares with the selected apis may lose its fields until a full run.',
+        );
+        return null;
       }
-      return specCache.get(api.schemaSource)!;
     }),
   );
-  apis.forEach((api, i) => validateSpec(specs[i]!, api.schemaSource, logger));
+  const steps = pipeline
+    .map((step, i) => ({ ...step, doc: loadedSpecs[i] }))
+    .filter((step): step is { api: ResolvedApi; write: boolean; doc: OpenApiDocument } => step.doc !== null);
+  steps.forEach(({ api, doc }) => validateSpec(doc, api.schemaSource, logger));
 
-  const registry = buildRegistry(specs, logger);
+  const registry = buildRegistry(
+    steps.map((step) => step.doc),
+    logger,
+  );
   logger.info(`registry: ${registry.length} namespaces`);
 
   const files = new OutputFiles();
-  if (partial) files.seedFromDisk(modelsDir);
+  // Only needed when a contributing spec could not be loaded: its models stay as they are on disk.
+  if (steps.length < pipeline.length) files.seedFromDisk(modelsDir);
   const prettierConfigFile = await findPrettierConfigFile(loaded.rootDir);
   const specDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ddd-web-spec-'));
 
   try {
-    for (const [i, api] of apis.entries()) {
-      const doc = repairMissingPathParameters(specs[i]!, logger);
-      logger.info(`── ${api.stem} (${i + 1}/${apis.length})`);
+    for (const [i, { api, write, doc: rawDoc }] of steps.entries()) {
+      const doc = repairMissingPathParameters(rawDoc, logger);
+      logger.info(`── ${api.stem} (${i + 1}/${steps.length})${write ? '' : ' (models only)'}`);
       const index = indexOperations(doc, api.sideEffects, api.skipUpdatePostTwins);
       if (index.skippedTwins.size > 0) logger.info(`  skipping ${index.skippedTwins.size} POST twin(s) of PATCH upserts`);
 
-      const rtkSource = await runRtkCodegen(api, doc, index, path.join(specDir, `${i}.json`), prettierConfigFile);
-      const endpoints = parseApiEndpoints(rtkSource, logger);
+      const rtk = await runRtkCodegen(api, doc, index, path.join(specDir, `${i}.json`), prettierConfigFile);
+      const endpoints = parseApiEndpoints(rtk.code, logger, rtk.locations);
       const textEndpoints = detectTextResponseEndpoints(doc, endpoints);
-
-      const apiSource = extractModels({ apiSource: rtkSource, apiFilePath: api.outputFile, modelsDir, registry, files, logger });
-      files.set(api.outputFile, injectTextResponseHandlers(apiSource, textEndpoints));
+      const textResponseTypes = new Set(
+        endpoints.filter((endpoint) => textEndpoints.has(endpoint.key) && endpoint.responseType).map((endpoint) => endpoint.responseType!),
+      );
 
       const esm = api.config.esmExtensions === true;
+      const apiSource = extractModels({
+        apiSource: rtk.code,
+        apiFilePath: api.outputFile,
+        modelsDir,
+        registry,
+        files,
+        logger,
+        esm,
+        textResponseTypes,
+      });
+      if (!write) continue;
+      files.set(api.outputFile, injectTextResponseHandlers(apiSource, textEndpoints));
+
       const withExtension = (specifier: string): string => (esm ? `${specifier}.js` : specifier);
       const enhanced = buildEnhancedEndpoints({
         stem: api.stem,

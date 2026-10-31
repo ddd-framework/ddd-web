@@ -61,12 +61,22 @@ export function formatFilterScalar(value: FilterScalar): string {
 }
 
 /**
- * Writes a filter literal: a scalar via {@link formatFilterScalar}, a list as `['a','b']` (bracket list with quoted
- * items, `FiltersOptionsParser::parseArrayLiteral()` — single-quoted items use the same two escapes).
+ * Writes one list item as a JSON value: a double-quoted JSON string (every scalar is written as its string form, as
+ * in {@link formatFilterScalar}) or `null`. `FiltersOptionsParser::parseArrayLiteral()` keeps the escapes of a
+ * double-quoted item and JSON-decodes the list, so every character — also newlines and other control characters,
+ * which a single-quoted item cannot carry — arrives unchanged.
+ */
+export function formatFilterListItem(value: FilterScalar): string {
+  return value === null ? 'null' : JSON.stringify(filterScalarToString(value));
+}
+
+/**
+ * Writes a filter literal: a scalar via {@link formatFilterScalar}, a list as `["a","b"]` (bracket list of JSON
+ * items, see {@link formatFilterListItem}).
  */
 export function formatFilterLiteral(value: FilterValue): string {
   if (Array.isArray(value)) {
-    return `[${(value as readonly FilterScalar[]).map(formatFilterScalar).join(',')}]`;
+    return `[${(value as readonly FilterScalar[]).map(formatFilterListItem).join(',')}]`;
   }
   return formatFilterScalar(value as FilterScalar);
 }

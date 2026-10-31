@@ -45,16 +45,23 @@ export function decodeJwt<T extends object = DddJwtClaims>(token: string | null 
  */
 export function getTokenExpiry(tokenOrClaims: string | DddJwtClaims | null | undefined): number | null {
   const claims = typeof tokenOrClaims === 'string' ? decodeJwt(tokenOrClaims) : (tokenOrClaims ?? null);
-  if (!claims) return null;
+  return claims ? readExpiry(claims).seconds : null;
+}
+
+/** The expiry claim (`expiresAt`, else `exp`): whether one is present and, if valid, its value in unix seconds. */
+function readExpiry(claims: DddJwtClaims): { present: boolean; seconds: number | null } {
   const expiry = claims.expiresAt ?? claims.exp;
-  const seconds = typeof expiry === 'string' ? Number(expiry) : expiry;
-  return typeof seconds === 'number' && Number.isFinite(seconds) ? seconds : null;
+  if (expiry === undefined || expiry === null) return { present: false, seconds: null };
+  const raw: unknown = expiry;
+  const seconds = typeof raw === 'string' && raw.trim() !== '' ? Number(raw) : raw;
+  return { present: true, seconds: typeof seconds === 'number' && Number.isFinite(seconds) ? seconds : null };
 }
 
 /**
  * True when the token is expired or expires within `skewSeconds`.
  *
- * A missing or malformed token counts as expired. A well-formed token without any expiry claim never expires.
+ * A missing or malformed token counts as expired, and so does a token whose expiry claim is present but not a valid
+ * number. A well-formed token without any expiry claim never expires.
  *
  * @param token raw JWT
  * @param skewSeconds safety margin; e.g. `30` treats a token that expires in 20 s as expired
@@ -63,7 +70,8 @@ export function getTokenExpiry(tokenOrClaims: string | DddJwtClaims | null | und
 export function isExpired(token: string | null | undefined, skewSeconds = 0, now: number = Date.now()): boolean {
   const claims = decodeJwt(token);
   if (!claims) return true;
-  const expiry = getTokenExpiry(claims);
-  if (expiry === null) return false;
-  return now / 1000 + skewSeconds >= expiry;
+  const expiry = readExpiry(claims);
+  if (!expiry.present) return false;
+  if (expiry.seconds === null) return true;
+  return now / 1000 + skewSeconds >= expiry.seconds;
 }

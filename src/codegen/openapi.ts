@@ -1,33 +1,27 @@
 /** Minimal OpenAPI 3 shapes the codegen reads. Unknown keys are passed through untouched. */
+import type { DddContractInfo, DddEntityInfo, DddOperationExtensions, HttpMethod } from '../contract/extensions';
 
-export const HTTP_METHODS = ['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace'] as const;
-export type HttpMethod = (typeof HTTP_METHODS)[number];
+export type { DddEntityAction, HttpMethod } from '../contract/extensions';
 
-export interface DddContractInfo {
-  contract: number;
-  ddd?: string;
-}
+export const HTTP_METHODS = ['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace'] as const satisfies readonly HttpMethod[];
 
-export type DddEntityAction = 'list' | 'get' | 'upsert' | 'delete' | 'action';
+/**
+ * `info.x-ddd-contract` as read from a document: the contract types from `contract`, tolerant of a missing `ddd`
+ * version (the codegen only needs the contract number).
+ */
+export type DddContractInfoInput = Pick<DddContractInfo, 'contract'> & Partial<Pick<DddContractInfo, 'ddd'>>;
 
-/** `x-ddd-entity` on an operation (Appendix A of the contract). */
-export interface DddEntityExtension {
-  schema: string;
-  action: DddEntityAction;
-  /** `path:<paramName>` or `body:<dotted.path>`. */
-  identity?: string;
-  derived?: boolean;
-}
+/** `x-ddd-entity` as read from a document: {@link DddEntityInfo}, tolerant of a missing `derived` flag. */
+export type DddEntityExtension = Omit<DddEntityInfo, 'derived'> & Partial<Pick<DddEntityInfo, 'derived'>>;
 
-export interface OpenApiOperation {
+export interface OpenApiOperation extends Omit<DddOperationExtensions, 'x-ddd-entity'> {
   summary?: string;
   description?: string;
   operationId?: string;
   tags?: string[];
   parameters?: unknown[];
   requestBody?: unknown;
-  responses?: Record<string, { content?: Record<string, unknown> } | undefined>;
-  'x-ddd-side-effects'?: boolean;
+  responses?: Record<string, { description?: string; content?: Record<string, unknown> } | undefined>;
   'x-ddd-entity'?: DddEntityExtension;
   [key: string]: unknown;
 }
@@ -41,7 +35,7 @@ export interface OpenApiTag {
 
 export interface OpenApiDocument {
   openapi?: string;
-  info?: { title?: string; version?: string; 'x-ddd-contract'?: DddContractInfo; [key: string]: unknown };
+  info?: { title?: string; version?: string; 'x-ddd-contract'?: DddContractInfoInput; [key: string]: unknown };
   tags?: OpenApiTag[];
   paths?: Record<string, OpenApiPathItem | undefined>;
   components?: { schemas?: Record<string, unknown>; [key: string]: unknown };

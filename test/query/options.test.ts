@@ -153,8 +153,8 @@ describe('sanitizers and reset keys', () => {
 
   it('builds stable keys', () => {
     expect(buildStaticArgsKey(undefined)).toBe('');
-    expect(buildStaticArgsKey({ b: 2, a: 'x', c: null, d: true })).toBe('a=x&b=2&c=&d=true');
-    expect(buildStaticArgsKey({ ids: [1, 2] })).toBe('ids=[1,2]');
-    expect(buildColumnSearchesKey({ title: 'x', author: '', isbn: '1' })).toBe('isbn=1&title=x');
+    expect(buildStaticArgsKey({ b: 2, a: 'x', c: null, d: true })).toBe('[["a","x"],["b",2],["c",null],["d",true]]');
+    expect(buildStaticArgsKey({ ids: [1, 2] })).toBe('[["ids",[1,2]]]');
+    expect(buildColumnSearchesKey({ title: 'x', author: '', isbn: '1' })).toBe('[["isbn","1"],["title","x"]]');
   });
 });

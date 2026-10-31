@@ -91,4 +91,26 @@ describe('linkSkills', () => {
       'ddd-web-query',
     ]);
   });
+
+  it('says clearly when the installed package ships no skills', () => {
+    const app = tempDir();
+    const packageDir = path.join(app, 'node_modules', '@mgamadeus', 'ddd-web');
+    fs.mkdirSync(packageDir, { recursive: true });
+    fs.writeFileSync(path.join(packageDir, 'package.json'), JSON.stringify({ name: '@mgamadeus/ddd-web', version: '9.9.9' }));
+    const messages: string[] = [];
+    const logger = { info: (m: string) => messages.push(m), warn: (m: string) => messages.push(m), error: () => {} };
+    expect(linkSkills({ cwd: app, logger })).toEqual([]);
+    fs.mkdirSync(path.join(packageDir, '.claude', 'skills'), { recursive: true });
+    expect(linkSkills({ cwd: app, logger })).toEqual([]);
+    expect(messages).toHaveLength(2);
+    for (const message of messages) expect(message).toMatch(/@mgamadeus\/ddd-web 9\.9\.9 ships no agent skills.*nothing to link/);
+    expect(fs.existsSync(path.join(app, '.claude'))).toBe(false);
+  });
+
+  it('says clearly when the package is not installed', () => {
+    const app = tempDir();
+    const messages: string[] = [];
+    linkSkills({ cwd: app, logger: { info: (m) => messages.push(m), warn: (m) => messages.push(m), error: () => {} } });
+    expect(messages.join('\n')).toMatch(/not installed/);
+  });
 });

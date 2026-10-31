@@ -58,8 +58,8 @@ export function assertValueFitsOperator(operator: FilterOperator, value: FilterV
 }
 
 /**
- * Builds one comparison `<property> <operator> <literal>`, e.g. `title eq 'O\'Brien'`, `id in ['1','2']`,
- * `published bw ['2026-01-01','2026-12-31']`. The value is written by `formatFilterLiteral()` (quoted, escaped,
+ * Builds one comparison `<property> <operator> <literal>`, e.g. `title eq 'O\'Brien'`, `id in ["1","2"]`,
+ * `published bw ["2026-01-01","2026-12-31"]`. The value is written by `formatFilterLiteral()` (quoted, escaped,
  * bracket list for list operators), so callers never concatenate values themselves — the client-side counterpart of
  * `FiltersOptions::createExpression()`. Throws {@link QueryOptionsError} for an invalid property path or a value
  * shape the backend rejects.
@@ -168,7 +168,7 @@ export function buildIntEqFilter(
 }
 
 /**
- * `<property> bw ['<day> 00:00:00','<day> 23:59:59']` — a full UTC calendar day on a date-time column. Returns
+ * `<property> bw ["<day> 00:00:00","<day> 23:59:59"]` — a full UTC calendar day on a date-time column. Returns
  * `undefined` unless `rawValue` is a real `YYYY-MM-DD` date: a partial date (`2026-10`) or one the calendar lacks
  * (`2026-13-45`, `2026-02-30`) would answer 400 (`FiltersOptions::isFilterDateTimeLiteral()`).
  */
