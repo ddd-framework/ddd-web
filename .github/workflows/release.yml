@@ -26,10 +26,11 @@ jobs:
       COREPACK_ENABLE_DOWNLOAD_PROMPT: 0
     steps:
       - uses: actions/checkout@v4
+      # No `registry-url` here: it writes an .npmrc with `_authToken=${NODE_AUTH_TOKEN}` plus a placeholder token,
+      # which npm then sends instead of exchanging the OIDC token (E401). The default registry is npmjs.
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          registry-url: https://registry.npmjs.org
       - name: Enable corepack (pnpm version from package.json)
         run: npm i -g corepack@latest && corepack enable
       # `npm stage publish` exists from npm 11.15.0 on (trusted publishing / OIDC from 11.5.1); stage publish
@@ -75,4 +76,5 @@ jobs:
         run: |
           VERSION=$(node -p "require('./package.json').version")
           case "$VERSION" in *-*) DIST_TAG=next ;; *) DIST_TAG=latest ;; esac
-          npm stage publish "$(ls "$RUNNER_TEMP"/mgamadeus-ddd-web-*.tgz)" --tag "$DIST_TAG" --access public
+          unset NODE_AUTH_TOKEN
+          npm stage publish "$(ls "$RUNNER_TEMP"/mgamadeus-ddd-web-*.tgz)" --tag "$DIST_TAG" --access public --registry https://registry.npmjs.org
