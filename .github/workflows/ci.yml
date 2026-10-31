@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Enable corepack (pnpm version from package.json)
+        run: npm i -g corepack@latest && corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - name: Published manifest has no workspace-only specifiers
+        run: |
+          if grep -E '"(workspace|link|file):' package.json; then
+            echo "package.json contains workspace:/link:/file: specifiers" >&2
+            exit 1
+          fi
+      - name: Pack
+        run: pnpm pack --pack-destination "$RUNNER_TEMP"
+      - name: Consumer install with npm and pnpm
+        run: |
+          TARBALL=$(ls "$RUNNER_TEMP"/mgamadeus-ddd-web-*.tgz)
+          for pm in npm pnpm; do
+            dir="$RUNNER_TEMP/consumer-$pm"
+            mkdir -p "$dir" && cp test/consumer/smoke.mjs "$dir/"
+            (cd "$dir" && echo '{"name":"consumer","private":true,"type":"module"}' > package.json \
+              && if [ "$pm" = npm ]; then npm install --no-audit --no-fund "$TARBALL" @reduxjs/toolkit; \
+                 else pnpm add "$TARBALL" @reduxjs/toolkit; fi \
+              && node smoke.mjs)
+          done

@@ -1,6 +1,6 @@
 # @mgamadeus/ddd-web
 
-> **Status: placeholder (0.0.x).** This release only reserves the package name. The first usable version is 0.1.0.
+> **Status: pre-release.** 0.0.1 only reserved the package name; 0.1.0 is the first usable version.
 
 `@mgamadeus/ddd-web` is the frontend counterpart of [mgamadeus/ddd](https://packagist.org/packages/mgamadeus/ddd),
 a PHP framework for domain-driven applications on top of Symfony and Doctrine, distributed via Composer/Packagist.
@@ -21,9 +21,41 @@ those conventions into frontend code:
 It contains no UI components and no domain logic; apps bring their own design system and business screens.
 Requires a backend on mgamadeus/ddd with OpenAPI contract version ≥ 1 (shipped with the `x-ddd-*` extensions).
 
+## Usage
+
+```sh
+pnpm add @mgamadeus/ddd-web @reduxjs/toolkit
+```
+
+```ts
+// openapi-config.ts
+import { defineConfig } from '@mgamadeus/ddd-web/codegen';
+
+export default defineConfig({
+  apis: [{
+    schemaFile: 'https://api.example.com/api/admin/documentation/openApi', // or a local snapshot file
+    apiFile: './src/api/baseApi.ts', apiImport: 'baseApi',
+    outputFile: './src/api/adminApi.ts', exportName: 'adminApi',
+    hooks: { queries: true, lazyQueries: true, mutations: true },
+  }],
+});
+```
+
+```sh
+pnpm exec ddd-web-sdk            # generate the SDK
+pnpm exec ddd-web link-skills    # link the package's agent skills into .claude/skills
+```
+
+Subpaths: `@mgamadeus/ddd-web/codegen`, `/query`, `/api`, `/auth`, `/contract`.
+
 ## Development
 
 pnpm only (version pinned in `package.json` → `packageManager`; enable with `corepack enable`).
+
+```sh
+pnpm install
+pnpm typecheck && pnpm test && pnpm build
+```
 
 ## License
 

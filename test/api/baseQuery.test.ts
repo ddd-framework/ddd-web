@@ -1,0 +1,201 @@
+import type { FetchBaseQueryError } from '@reduxjs/toolkit/query';
+import { describe, expect, it, vi } from 'vitest';
+import { createDddBaseQuery, type DddBaseQueryOptions } from '../../src/api';
+import type { DddTokens } from '../../src/auth';
+import { json, makeApi } from './helpers';
+
+const REFRESH = '/api/staff/common/auth/refresh';
+
+/**
+ * A fake backend: `/refresh` swaps the access token, every other route answers 401 unless the bearer is the current
+ * valid token. Each handler can be overridden.
+ */
+const setup = (overrides: Partial<DddBaseQueryOptions> = {}, backend: { refreshStatus?: number; denyStatus?: number; denyBody?: unknown } = {}) => {
+  const tokens: DddTokens = { accessToken: 'old', refreshToken: 'r1' };
+  let validToken = 'new';
+  const requests: Request[] = [];
+  const fetchFn = vi.fn(async (input: RequestInfo) => {
+    const request = input as Request;
+    requests.push(request);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const url = new URL(request.url);
+    if (url.pathname === REFRESH) {
+      if (backend.refreshStatus) return json(backend.refreshStatus, { error: 'Invalid refresh token' });
+      const body = (await request.json()) as { refreshToken: string };
+      validToken = 'new';
+      return json(200, { accessToken: validToken, refreshToken: `${body.refreshToken}+` });
+    }
+    if (request.headers.get('authorization') === `Bearer ${validToken}` && tokens.accessToken === validToken) {
+      return json(200, { ok: true, path: url.pathname });
+    }
+    return json(backend.denyStatus ?? 401, backend.denyBody ?? { error: 'Unauthorized' });
+  });
+  const setTokens = vi.fn((next: DddTokens): void => void Object.assign(tokens, next));
+  const onLogout = vi.fn(() => {
+    tokens.accessToken = null;
+    tokens.refreshToken = null;
+  });
+  const baseQuery = createDddBaseQuery({
+    baseUrl: 'https://api.test',
+    refreshPath: REFRESH,
+    getTokens: () => tokens,
+    setTokens,
+    onLogout,
+    fetchOptions: { fetchFn },
+    ...overrides,
+  });
+  const refreshCalls = () => requests.filter((request) => new URL(request.url).pathname === REFRESH).length;
+  return { baseQuery, fetchFn, requests, tokens, setTokens, onLogout, refreshCalls };
+};
+
+describe('createDddBaseQuery', () => {
+  it('requires refresh or refreshPath', () => {
+    expect(() =>
+      createDddBaseQuery({ baseUrl: 'x', getTokens: () => null, setTokens: vi.fn(), onLogout: vi.fn() }),
+    ).toThrow(/refreshPath/);
+  });
+
+  it('injects the bearer, languageCode and custom headers', async () => {
+    const { baseQuery, requests, tokens } = setup({
+      languageCode: ({ type }) => (type === 'mutation' ? 'fr' : 'en'),
+      headers: (headers) => {
+        headers.set('x-app', 'demo');
+      },
+    });
+    tokens.accessToken = 'new';
+    await baseQuery({ url: '/api/items', params: { a: 1, b: null } }, makeApi('query'), {});
+    await baseQuery({ url: '/api/items', method: 'POST', body: {} }, makeApi('mutation'), {});
+    expect(requests[0]!.headers.get('authorization')).toBe('Bearer new');
+    expect(requests[0]!.headers.get('languageCode')).toBe('en');
+    expect(requests[0]!.headers.get('x-app')).toBe('demo');
+    expect(requests[0]!.url).toBe('https://api.test/api/items?a=1');
+    expect(requests[1]!.headers.get('languageCode')).toBe('fr');
+  });
+
+  it('sends no bearer without an access token and keeps a caller-set authorization header', async () => {
+    const { baseQuery, requests, tokens } = setup();
+    tokens.accessToken = null;
+    tokens.refreshToken = null;
+    await baseQuery('/api/public', makeApi(), {});
+    expect(requests[0]!.headers.has('authorization')).toBe(false);
+    tokens.accessToken = 'new';
+    await baseQuery({ url: '/api/x', headers: { authorization: 'Bearer explicit' } }, makeApi(), {});
+    expect(requests[1]!.headers.get('authorization')).toBe('Bearer explicit');
+  });
+
+  it('401 → one refresh → one retry with the new token', async () => {
+    const { baseQuery, requests, setTokens, onLogout, refreshCalls } = setup();
+    const result = await baseQuery('/api/items', makeApi(), {});
+    expect(result.data).toEqual({ ok: true, path: '/api/items' });
+    expect(refreshCalls()).toBe(1);
+    expect(requests).toHaveLength(3);
+    expect(requests[2]!.headers.get('authorization')).toBe('Bearer new');
+    expect(setTokens).toHaveBeenCalledWith({ accessToken: 'new', refreshToken: 'r1+' }, expect.anything());
+    expect(onLogout).not.toHaveBeenCalled();
+  });
+
+  it('retries only once even when the retry fails again', async () => {
+    const refresh = vi.fn(async () => ({ accessToken: 'still-invalid', refreshToken: 'r2' }));
+    const { baseQuery, requests } = setup({ refresh });
+    const result = await baseQuery('/api/items', makeApi(), {});
+    expect((result.error as FetchBaseQueryError).status).toBe(401);
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(requests).toHaveLength(2);
+  });
+
+  it('concurrent 401s share one refresh and each retries once', async () => {
+    const { baseQuery, requests, refreshCalls } = setup();
+    const results = await Promise.all(['/a', '/b', '/c', '/d'].map((url) => baseQuery(url, makeApi(), {})));
+    expect(results.every((result) => (result.data as { ok?: boolean })?.ok)).toBe(true);
+    expect(refreshCalls()).toBe(1);
+    expect(requests).toHaveLength(4 + 1 + 4);
+  });
+
+  it('a request started during a refresh waits for it and uses the new token', async () => {
+    const { baseQuery, requests, refreshCalls } = setup();
+    const first = baseQuery('/a', makeApi(), {});
+    await new Promise((resolve) => setTimeout(resolve, 7)); // first got its 401, refresh in flight
+    const second = await baseQuery('/b', makeApi(), {});
+    await first;
+    expect((second.data as { ok: boolean }).ok).toBe(true);
+    expect(refreshCalls()).toBe(1);
+    const secondRequests = requests.filter((request) => request.url.endsWith('/b'));
+    expect(secondRequests).toHaveLength(1);
+    expect(secondRequests[0]!.headers.get('authorization')).toBe('Bearer new');
+  });
+
+  it('refresh failure → onLogout once, original error returned', async () => {
+    const { baseQuery, onLogout, requests } = setup({}, { refreshStatus: 401 });
+    const results = await Promise.all([baseQuery('/a', makeApi(), {}), baseQuery('/b', makeApi(), {})]);
+    expect(results.map((result) => (result.error as FetchBaseQueryError).status)).toEqual([401, 401]);
+    expect(onLogout).toHaveBeenCalledTimes(1);
+    expect(requests).toHaveLength(3); // two originals + one refresh, no retries
+  });
+
+  it('missing refresh token → onLogout without calling the refresh endpoint', async () => {
+    const { baseQuery, onLogout, tokens, refreshCalls } = setup();
+    tokens.refreshToken = null;
+    await baseQuery('/a', makeApi(), {});
+    expect(onLogout).toHaveBeenCalledTimes(1);
+    expect(refreshCalls()).toBe(0);
+  });
+
+  it('does not refresh on 403 by default', async () => {
+    const { baseQuery, refreshCalls, onLogout } = setup({}, { denyStatus: 403 });
+    const result = await baseQuery('/a', makeApi(), {});
+    expect((result.error as FetchBaseQueryError).status).toBe(403);
+    expect(refreshCalls()).toBe(0);
+    expect(onLogout).not.toHaveBeenCalled();
+  });
+
+  it('never refreshes for the auth endpoints themselves', async () => {
+    const { baseQuery, refreshCalls } = setup();
+    await baseQuery({ url: '/api/staff/common/auth/login', method: 'POST', body: {} }, makeApi('mutation'), {});
+    expect(refreshCalls()).toBe(0);
+  });
+
+  describe('custom shouldRefresh: 401/403 except business refusals', () => {
+    const isBusinessRefusal = (error: FetchBaseQueryError) =>
+      String((error.data as { code?: string } | undefined)?.code ?? '').startsWith('PLAN_');
+    const shouldRefresh = (error: FetchBaseQueryError) =>
+      (error.status === 401 || error.status === 403) && !isBusinessRefusal(error);
+
+    it('refreshes on a plain 403', async () => {
+      const { baseQuery, refreshCalls } = setup({ shouldRefresh }, { denyStatus: 403 });
+      const result = await baseQuery('/a', makeApi(), {});
+      expect(refreshCalls()).toBe(1);
+      expect(result.data).toEqual({ ok: true, path: '/a' });
+    });
+
+    it('does not refresh on an excluded 403', async () => {
+      const { baseQuery, refreshCalls, onLogout } = setup(
+        { shouldRefresh },
+        { denyStatus: 403, denyBody: { error: 'Not in your plan', code: 'PLAN_EXPORT' } },
+      );
+      const result = await baseQuery('/a', makeApi(), {});
+      expect(refreshCalls()).toBe(0);
+      expect(onLogout).not.toHaveBeenCalled();
+      expect((result.error as FetchBaseQueryError).status).toBe(403);
+    });
+  });
+
+  it('debug passthrough forwards page flags as query parameters', async () => {
+    const { baseQuery, requests, tokens } = setup({
+      debug: { searchParams: () => new URLSearchParams('?debug&noCache&xdebug&errorsAsJson'), xdebugSessionKey: 'k' },
+    });
+    tokens.accessToken = 'new';
+    await baseQuery({ url: '/a', params: { noCache: 'false' } }, makeApi(), {});
+    const url = new URL(requests[0]!.url);
+    expect(url.searchParams.get('debug')).toBe('true');
+    expect(url.searchParams.get('noCache')).toBe('false');
+    expect(url.searchParams.get('XDEBUG_SESSION')).toBe('k');
+    expect(url.searchParams.get('errors_as_json')).toBe('1');
+    expect(requests[0]!.headers.get('x-debug')).toBe('true');
+  });
+
+  it('debug is off by default', async () => {
+    const { baseQuery, requests } = setup();
+    await baseQuery('/a?x=1', makeApi(), {});
+    expect(new URL(requests[0]!.url).search).toBe('?x=1');
+  });
+});

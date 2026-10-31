@@ -1,0 +1,1576 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Library Admin API",
+    "version": "1.0.0",
+    "description": "## QueryOptions syntax\n\nOData-inspired query parameters (`filters`, `orderBy`, `expand`, `select`).",
+    "x-ddd-contract": {
+      "contract": 1,
+      "ddd": "3.14.0"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://library.example.test"
+    }
+  ],
+  "paths": {
+    "/api/admin/library/books/list": {
+      "get": {
+        "summary": "Books List",
+        "description": "Lists all Books",
+        "parameters": [
+          {
+            "name": "noCache",
+            "description": "Common request parameter — see \"Shared request parameters\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "outputFormat",
+            "description": "Common request parameter — see \"Shared request parameters\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "skip",
+            "description": "Common request parameter — see \"Shared request parameters\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "top",
+            "description": "Common request parameter — see \"Shared request parameters\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "orderBy",
+            "description": "OrderBy Options (OData-inspired). Syntax: see \"QueryOptions syntax\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filters",
+            "description": "Filter Options (OData-inspired). Allowed properties below.\n\n- `title`\n- `isbn`\n- `pageCount`\n- `id`\n- `created`",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "expand",
+            "description": "Expand Options (OData-inspired). Expandable relations below.\n\n- `author`",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "select",
+            "description": "Select Options (OData-inspired). Syntax: see \"QueryOptions syntax\".",
+            "required": false,
+            "in": "query",
+            "schema": {}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/App.Presentation.Api.Admin.Library.Dtos.Books.BooksGetResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "BadRequest: The data provided does not match requirements",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DDD.Infrastructure.Exceptions.BadRequestException"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "InternalError: An internal error has occured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DDD.Infrastructure.Exceptions.InternalErrorException"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Books "
+        ],
+        "x-ddd-entity": {
+          "schema": "App.Domain.Library.Entities.Books.Book",
+          "action": "list",
+          "derived": true
+        }
+      }
+    },
+    "/api/admin/library/books/{bookId}": {
+      "get": {
+        "summary": "Book Details",
+        "parameters": [
+          {
+            "name": "bookId",
+            "description": "The id of the Book",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "noCache",
+            "description": "Common request parameter — see \"Shared request parameters\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "outputFormat",
+            "description": "Common request parameter — see \"Shared request parameters\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/App.Presentation.Api.Admin.Library.Dtos.Books.BookGetResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "BadRequest: The data provided does not match requirements",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DDD.Infrastructure.Exceptions.BadRequestException"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "InternalError: An internal error has occured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DDD.Infrastructure.Exceptions.InternalErrorException"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Books "
+        ],
+        "x-ddd-entity": {
+          "schema": "App.Domain.Library.Entities.Books.Book",
+          "action": "get",
+          "identity": "path:bookId",
+          "derived": true
+        }
+      },
+      "delete": {
+        "summary": "Book Deletion",
+        "parameters": [
+          {
+            "name": "bookId",
+            "description": "The id of the Book",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "noCache",
+            "description": "Common request parameter — see \"Shared request parameters\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "outputFormat",
+            "description": "Common request parameter — see \"Shared request parameters\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/App.Presentation.Api.Admin.Common.Dtos.DeleteResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "BadRequest: The data provided does not match requirements",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DDD.Infrastructure.Exceptions.BadRequestException"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "InternalError: An internal error has occured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DDD.Infrastructure.Exceptions.InternalErrorException"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Books "
+        ],
+        "x-ddd-entity": {
+          "schema": "App.Domain.Library.Entities.Books.Book",
+          "action": "delete",
+          "identity": "path:bookId",
+          "derived": true
+        }
+      }
+    },
+    "/api/admin/library/books": {
+      "patch": {
+        "summary": "Book Update",
+        "parameters": [
+          {
+            "name": "noCache",
+            "description": "Common request parameter — see \"Shared request parameters\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "outputFormat",
+            "description": "Common request parameter — see \"Shared request parameters\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/App.Presentation.Api.Admin.Library.Dtos.Books.BookUpdateRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/App.Presentation.Api.Admin.Library.Dtos.Books.BookGetResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "BadRequest: The data provided does not match requirements",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DDD.Infrastructure.Exceptions.BadRequestException"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "InternalError: An internal error has occured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DDD.Infrastructure.Exceptions.InternalErrorException"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Books "
+        ],
+        "x-ddd-entity": {
+          "schema": "App.Domain.Library.Entities.Books.Book",
+          "action": "upsert",
+          "identity": "body:book.id",
+          "derived": true
+        }
+      },
+      "post": {
+        "summary": "Book Update",
+        "parameters": [
+          {
+            "name": "noCache",
+            "description": "Common request parameter — see \"Shared request parameters\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "outputFormat",
+            "description": "Common request parameter — see \"Shared request parameters\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/App.Presentation.Api.Admin.Library.Dtos.Books.BookUpdateRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/App.Presentation.Api.Admin.Library.Dtos.Books.BookGetResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "BadRequest: The data provided does not match requirements",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DDD.Infrastructure.Exceptions.BadRequestException"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "InternalError: An internal error has occured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DDD.Infrastructure.Exceptions.InternalErrorException"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Books "
+        ],
+        "x-ddd-entity": {
+          "schema": "App.Domain.Library.Entities.Books.Book",
+          "action": "upsert",
+          "identity": "body:book.id",
+          "derived": true
+        }
+      }
+    },
+    "/api/admin/library/books/{bookId}/generateSummary": {
+      "get": {
+        "summary": "Book Generate Summary",
+        "parameters": [
+          {
+            "name": "bookId",
+            "description": "The id of the Book",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "noCache",
+            "description": "Common request parameter — see \"Shared request parameters\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "outputFormat",
+            "description": "Common request parameter — see \"Shared request parameters\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/App.Presentation.Api.Admin.Library.Dtos.Books.BookSummaryGetResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "BadRequest: The data provided does not match requirements",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DDD.Infrastructure.Exceptions.BadRequestException"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "InternalError: An internal error has occured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DDD.Infrastructure.Exceptions.InternalErrorException"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Books "
+        ],
+        "x-ddd-side-effects": true,
+        "x-ddd-entity": {
+          "schema": "App.Domain.Library.Entities.Books.BookSummary",
+          "action": "upsert",
+          "derived": false
+        }
+      }
+    },
+    "/api/admin/library/books/search": {
+      "post": {
+        "summary": "Books Search",
+        "parameters": [
+          {
+            "name": "noCache",
+            "description": "Common request parameter — see \"Shared request parameters\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "outputFormat",
+            "description": "Common request parameter — see \"Shared request parameters\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/App.Presentation.Api.Admin.Library.Dtos.Books.BookSearchRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/App.Presentation.Api.Admin.Library.Dtos.Books.BooksGetResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "BadRequest: The data provided does not match requirements",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DDD.Infrastructure.Exceptions.BadRequestException"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "InternalError: An internal error has occured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DDD.Infrastructure.Exceptions.InternalErrorException"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Books "
+        ],
+        "x-ddd-side-effects": false
+      }
+    },
+    "/api/admin/library/books/{bookId}/publish": {
+      "post": {
+        "summary": "Book Publish",
+        "parameters": [
+          {
+            "name": "bookId",
+            "description": "The id of the Book",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "noCache",
+            "description": "Common request parameter — see \"Shared request parameters\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "outputFormat",
+            "description": "Common request parameter — see \"Shared request parameters\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/App.Presentation.Api.Admin.Library.Dtos.Books.BookGetResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "BadRequest: The data provided does not match requirements",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DDD.Infrastructure.Exceptions.BadRequestException"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "InternalError: An internal error has occured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DDD.Infrastructure.Exceptions.InternalErrorException"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Books "
+        ]
+      }
+    },
+    "/api/admin/library/books/{bookId}/preview": {
+      "get": {
+        "summary": "Book Preview",
+        "parameters": [
+          {
+            "name": "bookId",
+            "description": "The id of the Book",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "noCache",
+            "description": "Common request parameter — see \"Shared request parameters\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "outputFormat",
+            "description": "Common request parameter — see \"Shared request parameters\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "BadRequest: The data provided does not match requirements",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DDD.Infrastructure.Exceptions.BadRequestException"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "InternalError: An internal error has occured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DDD.Infrastructure.Exceptions.InternalErrorException"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Books "
+        ]
+      }
+    },
+    "/api/admin/library/authors/list": {
+      "get": {
+        "summary": "Authors List",
+        "parameters": [
+          {
+            "name": "noCache",
+            "description": "Common request parameter — see \"Shared request parameters\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "outputFormat",
+            "description": "Common request parameter — see \"Shared request parameters\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "skip",
+            "description": "Common request parameter — see \"Shared request parameters\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "top",
+            "description": "Common request parameter — see \"Shared request parameters\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "orderBy",
+            "description": "OrderBy Options (OData-inspired). Syntax: see \"QueryOptions syntax\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filters",
+            "description": "Filter Options (OData-inspired). Allowed properties below.\n\n- `name`\n- `id`",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "expand",
+            "description": "Expand Options (OData-inspired). Expandable relations below.\n\n- `books`",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "select",
+            "description": "Select Options (OData-inspired). Syntax: see \"QueryOptions syntax\".",
+            "required": false,
+            "in": "query",
+            "schema": {}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/App.Presentation.Api.Admin.Library.Dtos.Authors.AuthorsGetResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "BadRequest: The data provided does not match requirements",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DDD.Infrastructure.Exceptions.BadRequestException"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "InternalError: An internal error has occured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DDD.Infrastructure.Exceptions.InternalErrorException"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Authors "
+        ]
+      }
+    },
+    "/api/admin/library/authors/{authorId}": {
+      "get": {
+        "summary": "Author Details",
+        "parameters": [
+          {
+            "name": "authorId",
+            "description": "The id of the Author",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "noCache",
+            "description": "Common request parameter — see \"Shared request parameters\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "outputFormat",
+            "description": "Common request parameter — see \"Shared request parameters\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/App.Presentation.Api.Admin.Library.Dtos.Authors.AuthorGetResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "BadRequest: The data provided does not match requirements",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DDD.Infrastructure.Exceptions.BadRequestException"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "InternalError: An internal error has occured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DDD.Infrastructure.Exceptions.InternalErrorException"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Authors "
+        ]
+      },
+      "delete": {
+        "summary": "Author Deletion",
+        "parameters": [
+          {
+            "name": "authorId",
+            "description": "The id of the Author",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "noCache",
+            "description": "Common request parameter — see \"Shared request parameters\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "outputFormat",
+            "description": "Common request parameter — see \"Shared request parameters\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/App.Presentation.Api.Admin.Common.Dtos.DeleteResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "BadRequest: The data provided does not match requirements",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DDD.Infrastructure.Exceptions.BadRequestException"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "InternalError: An internal error has occured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DDD.Infrastructure.Exceptions.InternalErrorException"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Authors "
+        ]
+      }
+    },
+    "/api/admin/library/authors": {
+      "patch": {
+        "summary": "Author Update",
+        "parameters": [
+          {
+            "name": "noCache",
+            "description": "Common request parameter — see \"Shared request parameters\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "outputFormat",
+            "description": "Common request parameter — see \"Shared request parameters\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/App.Presentation.Api.Admin.Library.Dtos.Authors.AuthorUpdateRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/App.Presentation.Api.Admin.Library.Dtos.Authors.AuthorGetResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "BadRequest: The data provided does not match requirements",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DDD.Infrastructure.Exceptions.BadRequestException"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "InternalError: An internal error has occured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DDD.Infrastructure.Exceptions.InternalErrorException"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Authors "
+        ]
+      },
+      "post": {
+        "summary": "Author Update",
+        "parameters": [
+          {
+            "name": "noCache",
+            "description": "Common request parameter — see \"Shared request parameters\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "outputFormat",
+            "description": "Common request parameter — see \"Shared request parameters\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/App.Presentation.Api.Admin.Library.Dtos.Authors.AuthorUpdateRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/App.Presentation.Api.Admin.Library.Dtos.Authors.AuthorGetResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "BadRequest: The data provided does not match requirements",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DDD.Infrastructure.Exceptions.BadRequestException"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "InternalError: An internal error has occured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DDD.Infrastructure.Exceptions.InternalErrorException"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Authors "
+        ]
+      }
+    },
+    "/api/admin/library/authors/preview": {
+      "post": {
+        "summary": "Author Preview",
+        "parameters": [
+          {
+            "name": "noCache",
+            "description": "Common request parameter — see \"Shared request parameters\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "outputFormat",
+            "description": "Common request parameter — see \"Shared request parameters\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/App.Presentation.Api.Admin.Library.Dtos.Authors.AuthorUpdateRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/App.Presentation.Api.Admin.Library.Dtos.Authors.AuthorGetResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "BadRequest: The data provided does not match requirements",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DDD.Infrastructure.Exceptions.BadRequestException"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "InternalError: An internal error has occured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DDD.Infrastructure.Exceptions.InternalErrorException"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Authors "
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "App.Domain.Library.Entities.Books.Book": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "nullable": true,
+            "description": "The internal identifier of the entity",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "isbn": {
+            "type": "string",
+            "nullable": true
+          },
+          "pageCount": {
+            "type": "integer",
+            "default": 0
+          },
+          "authorId": {
+            "type": "integer",
+            "nullable": true
+          },
+          "author": {
+            "nullable": true,
+            "$ref": "#/components/schemas/App.Domain.Library.Entities.Authors.Author"
+          },
+          "changeHistory": {
+            "nullable": true,
+            "$ref": "#/components/schemas/DDD.Domain.Base.Entities.ChangeHistory.ChangeHistory"
+          },
+          "objectType": {
+            "type": "string",
+            "nullable": true,
+            "description": "The fully qualified class name of the object"
+          }
+        },
+        "required": [
+          "title"
+        ]
+      },
+      "App.Domain.Library.Entities.Books.Books": {
+        "type": "object",
+        "properties": {
+          "elements": {
+            "type": "array",
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/App.Domain.Library.Entities.Books.Book"
+            }
+          },
+          "objectType": {
+            "type": "string",
+            "nullable": true,
+            "description": "The fully qualified class name of the object"
+          }
+        }
+      },
+      "App.Domain.Library.Entities.Books.BookSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "nullable": true,
+            "description": "The internal identifier of the entity",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ]
+          },
+          "bookId": {
+            "type": "integer"
+          },
+          "text": {
+            "type": "string"
+          },
+          "changeHistory": {
+            "nullable": true,
+            "$ref": "#/components/schemas/DDD.Domain.Base.Entities.ChangeHistory.ChangeHistory"
+          },
+          "objectType": {
+            "type": "string",
+            "nullable": true,
+            "description": "The fully qualified class name of the object"
+          }
+        }
+      },
+      "App.Domain.Library.Entities.Authors.Author": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "nullable": true,
+            "description": "The internal identifier of the entity",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "books": {
+            "nullable": true,
+            "$ref": "#/components/schemas/App.Domain.Library.Entities.Books.Books"
+          },
+          "changeHistory": {
+            "nullable": true,
+            "$ref": "#/components/schemas/DDD.Domain.Base.Entities.ChangeHistory.ChangeHistory"
+          },
+          "objectType": {
+            "type": "string",
+            "nullable": true,
+            "description": "The fully qualified class name of the object"
+          }
+        }
+      },
+      "App.Domain.Library.Entities.Authors.Authors": {
+        "type": "object",
+        "properties": {
+          "elements": {
+            "type": "array",
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/App.Domain.Library.Entities.Authors.Author"
+            }
+          },
+          "objectType": {
+            "type": "string",
+            "nullable": true,
+            "description": "The fully qualified class name of the object"
+          }
+        }
+      },
+      "DDD.Domain.Base.Entities.ChangeHistory.ChangeHistory": {
+        "type": "object",
+        "properties": {
+          "createdTime": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "modifiedTime": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "objectType": {
+            "type": "string",
+            "nullable": true,
+            "description": "The fully qualified class name of the object"
+          }
+        }
+      },
+      "App.Presentation.Api.Admin.Library.Dtos.Books.BooksGetResponseDto": {
+        "type": "object",
+        "properties": {
+          "books": {
+            "$ref": "#/components/schemas/App.Domain.Library.Entities.Books.Books"
+          }
+        },
+        "required": [
+          "books"
+        ]
+      },
+      "App.Presentation.Api.Admin.Library.Dtos.Books.BookGetResponseDto": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "$ref": "#/components/schemas/App.Domain.Library.Entities.Books.Book"
+          }
+        },
+        "required": [
+          "book"
+        ]
+      },
+      "App.Presentation.Api.Admin.Library.Dtos.Books.BookUpdateRequestDto": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "$ref": "#/components/schemas/App.Domain.Library.Entities.Books.Book"
+          }
+        },
+        "required": [
+          "book"
+        ]
+      },
+      "App.Presentation.Api.Admin.Library.Dtos.Books.BookSearchRequestDto": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "App.Presentation.Api.Admin.Library.Dtos.Books.BookSummaryGetResponseDto": {
+        "type": "object",
+        "properties": {
+          "bookSummary": {
+            "$ref": "#/components/schemas/App.Domain.Library.Entities.Books.BookSummary"
+          }
+        },
+        "required": [
+          "bookSummary"
+        ]
+      },
+      "App.Presentation.Api.Admin.Library.Dtos.Authors.AuthorsGetResponseDto": {
+        "type": "object",
+        "properties": {
+          "authors": {
+            "$ref": "#/components/schemas/App.Domain.Library.Entities.Authors.Authors"
+          }
+        },
+        "required": [
+          "authors"
+        ]
+      },
+      "App.Presentation.Api.Admin.Library.Dtos.Authors.AuthorGetResponseDto": {
+        "type": "object",
+        "properties": {
+          "author": {
+            "$ref": "#/components/schemas/App.Domain.Library.Entities.Authors.Author"
+          }
+        },
+        "required": [
+          "author"
+        ]
+      },
+      "App.Presentation.Api.Admin.Library.Dtos.Authors.AuthorUpdateRequestDto": {
+        "type": "object",
+        "properties": {
+          "author": {
+            "$ref": "#/components/schemas/App.Domain.Library.Entities.Authors.Author"
+          }
+        },
+        "required": [
+          "author"
+        ]
+      },
+      "App.Presentation.Api.Admin.Common.Dtos.DeleteResponseDto": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "default": "Entity deleted",
+            "description": "Response Message"
+          }
+        },
+        "required": [
+          "message"
+        ]
+      },
+      "DDD.Infrastructure.Validation.ValidationErrors": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "DDD.Infrastructure.Exceptions.BadRequestException": {
+        "type": "object",
+        "properties": {
+          "validationErrors": {
+            "$ref": "#/components/schemas/DDD.Infrastructure.Validation.ValidationErrors"
+          },
+          "error": {
+            "type": "string",
+            "nullable": true,
+            "description": "Error message"
+          }
+        }
+      },
+      "DDD.Infrastructure.Exceptions.InternalErrorException": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "nullable": true,
+            "description": "Error message"
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Author",
+      "description": "<SchemaDefinition schemaRef=\"#/components/schemas/App.Domain.Library.Entities.Authors.Author\" />"
+    },
+    {
+      "name": "Authors",
+      "description": "<SchemaDefinition schemaRef=\"#/components/schemas/App.Domain.Library.Entities.Authors.Authors\" />"
+    },
+    {
+      "name": "Book",
+      "description": "<SchemaDefinition schemaRef=\"#/components/schemas/App.Domain.Library.Entities.Books.Book\" />"
+    },
+    {
+      "name": "BookSummary",
+      "description": "<SchemaDefinition schemaRef=\"#/components/schemas/App.Domain.Library.Entities.Books.BookSummary\" />"
+    },
+    {
+      "name": "Books",
+      "description": "<SchemaDefinition schemaRef=\"#/components/schemas/App.Domain.Library.Entities.Books.Books\" />"
+    },
+    {
+      "name": "DeleteResponseDto",
+      "description": "<SchemaDefinition schemaRef=\"#/components/schemas/App.Presentation.Api.Admin.Common.Dtos.DeleteResponseDto\" />"
+    },
+    {
+      "name": "AuthorGetResponseDto",
+      "description": "<SchemaDefinition schemaRef=\"#/components/schemas/App.Presentation.Api.Admin.Library.Dtos.Authors.AuthorGetResponseDto\" />"
+    },
+    {
+      "name": "AuthorUpdateRequestDto",
+      "description": "<SchemaDefinition schemaRef=\"#/components/schemas/App.Presentation.Api.Admin.Library.Dtos.Authors.AuthorUpdateRequestDto\" />"
+    },
+    {
+      "name": "AuthorsGetResponseDto",
+      "description": "<SchemaDefinition schemaRef=\"#/components/schemas/App.Presentation.Api.Admin.Library.Dtos.Authors.AuthorsGetResponseDto\" />"
+    },
+    {
+      "name": "BookGetResponseDto",
+      "description": "<SchemaDefinition schemaRef=\"#/components/schemas/App.Presentation.Api.Admin.Library.Dtos.Books.BookGetResponseDto\" />"
+    },
+    {
+      "name": "BookSearchRequestDto",
+      "description": "<SchemaDefinition schemaRef=\"#/components/schemas/App.Presentation.Api.Admin.Library.Dtos.Books.BookSearchRequestDto\" />"
+    },
+    {
+      "name": "BookSummaryGetResponseDto",
+      "description": "<SchemaDefinition schemaRef=\"#/components/schemas/App.Presentation.Api.Admin.Library.Dtos.Books.BookSummaryGetResponseDto\" />"
+    },
+    {
+      "name": "BookUpdateRequestDto",
+      "description": "<SchemaDefinition schemaRef=\"#/components/schemas/App.Presentation.Api.Admin.Library.Dtos.Books.BookUpdateRequestDto\" />"
+    },
+    {
+      "name": "BooksGetResponseDto",
+      "description": "<SchemaDefinition schemaRef=\"#/components/schemas/App.Presentation.Api.Admin.Library.Dtos.Books.BooksGetResponseDto\" />"
+    },
+    {
+      "name": "ChangeHistory",
+      "description": "<SchemaDefinition schemaRef=\"#/components/schemas/DDD.Domain.Base.Entities.ChangeHistory.ChangeHistory\" />"
+    },
+    {
+      "name": "BadRequestException",
+      "description": "<SchemaDefinition schemaRef=\"#/components/schemas/DDD.Infrastructure.Exceptions.BadRequestException\" />"
+    },
+    {
+      "name": "InternalErrorException",
+      "description": "<SchemaDefinition schemaRef=\"#/components/schemas/DDD.Infrastructure.Exceptions.InternalErrorException\" />"
+    },
+    {
+      "name": "ValidationErrors",
+      "description": "<SchemaDefinition schemaRef=\"#/components/schemas/DDD.Infrastructure.Validation.ValidationErrors\" />"
+    },
+    {
+      "name": "Books ",
+      "description": "Books operations"
+    },
+    {
+      "name": "Authors ",
+      "description": "Authors operations"
+    }
+  ],
+  "x-tagGroups": [
+    {
+      "name": "Library",
+      "tags": [
+        "Authors ",
+        "Books "
+      ]
+    }
+  ]
+}
