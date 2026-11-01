@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.1
+
+### Fixed
+- codegen: the `responseHandler` (`blobResponseHandler` / `"text"`) is injected on the TypeScript syntax tree of the
+  generated api file instead of by line patterns. Endpoints whose long names prettier wraps onto their own line
+  (`key:` / `build.query<` / type arguments on separate lines) silently got no handler in 0.2.0 while their result
+  type already said `DddFileResponse` / `string`.
+- codegen: generation aborts with an error listing each endpoint (and the reason) when a detected or overridden
+  handler cannot be injected, instead of skipping it.
+
+### Migration
+- Regenerate the SDK; affected long-named download and text endpoints now get their handler.
+
 ## 0.2.0
 
 ### Added

@@ -117,7 +117,9 @@ The response handler of each endpoint follows its 2xx content types:
 | only `text/html`, `text/plain`, `text/xml` | `responseHandler: "text"` | `string` |
 | anything else (JSON, mixed JSON and file) | RTK JSON parsing | the RTK type |
 
-A `responseHandlers` override wins over detection. Error responses of blob endpoints are still parsed as JSON/text,
+A `responseHandlers` override wins over detection. The handler is injected on the syntax tree of the generated api
+file, independent of formatting; if it cannot be injected for a detected or overridden endpoint, `ddd-web-sdk` aborts
+and lists the endpoints instead of generating a result type the request does not match. Error responses of blob endpoints are still parsed as JSON/text,
 so `normalizeDddError` works as usual. Download in a component:
 
 ```ts
