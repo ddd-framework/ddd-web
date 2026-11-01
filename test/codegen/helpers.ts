@@ -12,11 +12,32 @@ export function readSample(): OpenApiDocument {
   return JSON.parse(fs.readFileSync(SAMPLE_SPEC, 'utf-8')) as OpenApiDocument;
 }
 
+/**
+ * The package's own dependencies plus a stand-in for `@mgamadeus/ddd-web/api` (generated binary endpoints import
+ * `blobResponseHandler` / `DddFileResponse` from it) that re-exports the source, so tests need no build.
+ */
+function linkNodeModules(dir: string): void {
+  const target = path.join(dir, 'node_modules');
+  fs.mkdirSync(target);
+  for (const entry of fs.readdirSync(path.join(packageRoot, 'node_modules'))) {
+    if (entry.startsWith('.') && entry !== '.bin') continue;
+    fs.symlinkSync(path.join(packageRoot, 'node_modules', entry), path.join(target, entry), 'dir');
+  }
+  const self = path.join(target, '@mgamadeus', 'ddd-web');
+  fs.mkdirSync(self, { recursive: true });
+  fs.writeFileSync(
+    path.join(self, 'package.json'),
+    JSON.stringify({ name: '@mgamadeus/ddd-web', type: 'module', exports: { './api': { types: './api.d.ts' } } }),
+  );
+  const source = path.join(packageRoot, 'src', 'api', 'download.js').replace(/\\/g, '/');
+  fs.writeFileSync(path.join(self, 'api.d.ts'), `export { blobResponseHandler } from '${source}';\nexport type { DddFileResponse } from '${source}';\n`);
+}
+
 /** A throwaway consumer app: base api, tsconfig and the package's node_modules for type checking. */
 export function createApp(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ddd-web-codegen-test-'));
   fs.mkdirSync(path.join(dir, 'src', 'api'), { recursive: true });
-  fs.symlinkSync(path.join(packageRoot, 'node_modules'), path.join(dir, 'node_modules'), 'dir');
+  linkNodeModules(dir);
   fs.writeFileSync(
     path.join(dir, 'src', 'api', 'baseApi.ts'),
     "import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';\n" +

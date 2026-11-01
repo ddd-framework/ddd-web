@@ -1,5 +1,5 @@
 import { hasSideEffects } from '../contract/extensions';
-import type { SideEffectsOverride } from './config';
+import type { OperationMatcher, SideEffectsOverride } from './config';
 import type { DddEntityExtension, HttpMethod, OpenApiDocument, OpenApiOperation } from './openapi';
 import { listOperations, operationKey } from './openapi';
 
@@ -29,7 +29,8 @@ export function testPattern(pattern: RegExp, value: string): boolean {
   return result;
 }
 
-function matchesOverride(override: SideEffectsOverride, method: HttpMethod, path: string): boolean {
+/** Whether a config override (`{ method?, path: string | RegExp }`) applies to an operation. */
+export function matchesOperation(override: OperationMatcher, method: HttpMethod, path: string): boolean {
   if (override.method && override.method.toLowerCase() !== method) return false;
   return typeof override.path === 'string' ? override.path === path : testPattern(override.path, path);
 }
@@ -78,7 +79,7 @@ export function indexOperations(
   const byKey = new Map<string, OperationInfo>();
   for (const { method, path, operation } of listOperations(doc)) {
     const extension = operation['x-ddd-side-effects'];
-    const override = overrides.find((candidate) => matchesOverride(candidate, method, path));
+    const override = overrides.find((candidate) => matchesOperation(candidate, method, path));
     let sideEffects = hasSideEffects(method, operation);
     let explicit = false;
     if (typeof extension === 'boolean') {

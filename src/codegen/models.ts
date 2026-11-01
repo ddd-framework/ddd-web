@@ -3,6 +3,7 @@ import type TypeScript from 'typescript';
 import type { OutputFiles } from './files';
 import type { Logger } from './log';
 import type { NamespacePath } from './registry';
+import { DDD_WEB_API_IMPORT } from './response-handlers';
 import { loadTypeScript } from './typescript';
 
 interface Declaration {
@@ -155,8 +156,11 @@ export interface ExtractModelsInput {
   logger: Logger;
   /** Write `.js` import specifiers (`esmExtensions`), incl. `index.js` for the models barrel. */
   esm?: boolean;
-  /** RTK names of the response types of text-only endpoints; only these become `string`. */
-  textResponseTypes?: ReadonlySet<string>;
+  /**
+   * RTK names of response types of endpoints with a response handler: `text` becomes `string`, `blob` becomes
+   * `DddFileResponse` (imported from the package's `api` entry). Every other type stays as RTK generated it.
+   */
+  responseKinds?: ReadonlyMap<string, 'text' | 'blob'>;
 }
 
 /**
@@ -172,7 +176,7 @@ export interface ExtractModelsInput {
 export function extractModels(input: ExtractModelsInput): string {
   const { modelsDir, registry, files, logger } = input;
   const esm = input.esm === true;
-  const textResponseTypes = input.textResponseTypes ?? new Set<string>();
+  const responseKinds = input.responseKinds ?? new Map<string, 'text' | 'blob'>();
   const indexPath = path.join(modelsDir, 'index.ts');
 
   // Exported name → model file (lower-case path), over everything already in the store (earlier apis, seeded files).
@@ -221,7 +225,7 @@ export function extractModels(input: ExtractModelsInput): string {
   const renamedSource = renameRegex
     ? input.apiSource.replace(renameRegex, (_, name: string) => renameMap.get(name) ?? name)
     : input.apiSource;
-  const textTypes = new Set([...textResponseTypes].map((name) => renameMap.get(name) ?? name));
+  const kindByName = new Map([...responseKinds].map(([name, kind]) => [renameMap.get(name) ?? name, kind] as const));
 
   const renamedDeclarations = exportedTypeDeclarations(renamedSource);
   const entries: Array<{ name: string; body: string; filePath: string }> = [];
@@ -254,12 +258,24 @@ export function extractModels(input: ExtractModelsInput): string {
         if (match[1] && match[1] !== name) dependencies.add(match[1]);
       }
     }
-    const importLines = [...dependencies]
-      .map((dependency) => `import { ${dependency} } from '${importSpecifier(filePath, pathByName.get(dependency)!, esm)}';`)
-      .join('\n');
-
-    // Text-response endpoints come out of RTK as `= /** status 200 */ {}`; `string` is what arrives.
-    const typedBody = textTypes.has(name) ? body.replace(/(=\s*\/\*\* status \d+[^*]*\*\/)\s*\{\}/g, '$1 string') : body;
+    const kind = kindByName.get(name);
+    let typedBody = body;
+    if (kind === 'text') {
+      // Text-response endpoints come out of RTK as `= /** status 200 */ {}`; `string` is what arrives. A forced text
+      // handler on a JSON-declared response replaces the whole type.
+      const replaced = body.replace(/(=\s*\/\*\* status \d+[^*]*\*\/)\s*\{\}/g, '$1 string');
+      typedBody = replaced !== body ? replaced : `export type ${name} = string;`;
+      dependencies.clear();
+    } else if (kind === 'blob') {
+      typedBody = `export type ${name} = DddFileResponse;`;
+      dependencies.clear();
+    }
+    const importLines = [
+      ...(kind === 'blob' ? [`import type { DddFileResponse } from '${DDD_WEB_API_IMPORT}';`] : []),
+      ...[...dependencies].map(
+        (dependency) => `import { ${dependency} } from '${importSpecifier(filePath, pathByName.get(dependency)!, esm)}';`,
+      ),
+    ].join('\n');
 
     const existing = files.isGeneratedThisRun(filePath) ? files.get(filePath) : undefined;
     const content =

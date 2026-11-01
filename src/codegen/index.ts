@@ -1,5 +1,14 @@
 export { defineConfig, loadConfig } from './config';
-export type { HooksOptions, LoadedConfig, SdkApiConfig, SdkConfig, SideEffectsOverride, WorkspaceOptions } from './config';
+export type {
+  HooksOptions,
+  LoadedConfig,
+  OperationMatcher,
+  ResponseHandlerOverride,
+  SdkApiConfig,
+  SdkConfig,
+  SideEffectsOverride,
+  WorkspaceOptions,
+} from './config';
 export { generateSdk } from './generate';
 export type { GenerateSdkOptions, GenerateSdkResult } from './generate';
 export { linkSkills } from './link-skills';

@@ -718,6 +718,59 @@
         ]
       }
     },
+    "/api/admin/library/books/export": {
+      "get": {
+        "summary": "Books Export (Excel)",
+        "parameters": [
+          {
+            "name": "noCache",
+            "description": "Common request parameter — see \"Shared request parameters\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "BadRequest: The data provided does not match requirements",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DDD.Infrastructure.Exceptions.BadRequestException"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "InternalError: An internal error has occured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DDD.Infrastructure.Exceptions.InternalErrorException"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Books "
+        ],
+        "x-ddd-side-effects": false
+      }
+    },
     "/api/admin/library/authors/list": {
       "get": {
         "summary": "Authors List",
@@ -1147,6 +1200,58 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/App.Presentation.Api.Admin.Library.Dtos.Authors.AuthorGetResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "BadRequest: The data provided does not match requirements",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DDD.Infrastructure.Exceptions.BadRequestException"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "InternalError: An internal error has occured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DDD.Infrastructure.Exceptions.InternalErrorException"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Authors "
+        ]
+      }
+    },
+    "/api/admin/library/authors/export": {
+      "get": {
+        "summary": "Authors Export (Excel)",
+        "parameters": [
+          {
+            "name": "noCache",
+            "description": "Common request parameter — see \"Shared request parameters\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {}
                 }
               }
             }

@@ -32,6 +32,7 @@ too). A plain RTK-codegen file with `export const apis = [...]` is accepted as w
 | `baseApiImport` | Import specifier of the base api used by `<stem>Enhanced.ts`. Default: `apiFile` relative to the output dir. |
 | `skipUpdatePostTwins` | Overrides the global setting for this api. |
 | `sideEffects` | Overrides checked before the global ones (first match wins). |
+| `responseHandlers` | Overrides checked before the global ones (first match wins). |
 | `esmExtensions` | `true` for `moduleResolution: nodenext`: generated relative imports end in `.js`. |
 | any other key | Passed to RTK codegen (`argSuffix`, `flattenArg`, `endpointOverrides`, `filterEndpoints`, …). |
 
@@ -42,6 +43,7 @@ too). A plain RTK-codegen file with `export const apis = [...]` is accepted as w
 | `modelsDir` | Model output directory. Default `<dir of the first outputFile>/../models`; without it every api must share one output directory. |
 | `skipUpdatePostTwins` | DDD `#[Update]` serves the same route as PATCH and POST; `true` generates only the PATCH hook. With `x-ddd-entity` both must be `upsert` of the same entity; without it summary, parameters, body and responses must be identical. Conflicting annotations never skip. Default `false` (keep it `false` when app code already calls the POST hooks). |
 | `sideEffects` | `SideEffectsOverride[]` for specs without `x-ddd-side-effects`: `{ method?, path: string \| RegExp, sideEffects, endpointType? }`. A writing GET becomes a mutation, a reading POST a query; `endpointType: 'mutation'` keeps a reading POST a mutation that invalidates nothing. |
+| `responseHandlers` | `ResponseHandlerOverride[]`: `{ method?, path: string \| RegExp, handler: 'blob' \| 'text' \| 'json' }`, same matching as `sideEffects`. Wins over content-type detection — for specs that declare no or the wrong content type (a DDD backend often declares `application/json` for an Excel export). `json` turns a detected handler off. See section 3a. |
 | `workspace` | `{ envVar, envFiles?, urlKeys?, prompt? }`: resolves a workspace / subdomain value (CLI `--workspace` → env → URL sniffed from `.env` / `.env.local` → TTY prompt) into `process.env[envVar]` before the config is evaluated again. |
 | `tsconfig` | tsconfig of the final type check. Default `tsconfig.json` next to the config. |
 
@@ -51,6 +53,9 @@ export default defineConfig({
   sideEffects: [
     { method: 'GET', path: /\/books\/\{bookId\}\/generateSummary$/, sideEffects: true }, // writing GET → mutation
     { method: 'POST', path: '/api/admin/library/books/search', sideEffects: false },     // reading POST → query
+  ],
+  responseHandlers: [
+    { method: 'GET', path: /\/export$/, handler: 'blob' },                              // Excel export declared as JSON
   ],
   apis: [
     { schemaFile: './openapi/admin.json', apiFile: './src/api/baseApi.ts', apiImport: 'baseApi',
@@ -101,6 +106,35 @@ names a known tag (warning when none is found — the endpoint gets no tags).
 | upsert / delete with a path identity | invalidates `{ type, id }` + LIST | — |
 | any other write | invalidates LIST + the whole tag | invalidates LIST + the whole tag |
 | mutation without side effects | invalidates nothing | invalidates nothing |
+
+## 3a. File downloads and text responses
+
+The response handler of each endpoint follows its 2xx content types:
+
+| 2xx content types | Generated | Result type |
+|---|---|---|
+| only file types: `application/octet-stream`, `application/zip`, `application/pdf`, `application/vnd.*` (Excel, Word, …), `text/csv`, `image/*`, `audio/*`, `video/*`, `font/*` (never `…json`) — text types may be mixed in | `responseHandler: blobResponseHandler` (imported from `@mgamadeus/ddd-web/api`) | `DddFileResponse` = `{ blob, filename, contentType }` |
+| only `text/html`, `text/plain`, `text/xml` | `responseHandler: "text"` | `string` |
+| anything else (JSON, mixed JSON and file) | RTK JSON parsing | the RTK type |
+
+A `responseHandlers` override wins over detection. Error responses of blob endpoints are still parsed as JSON/text,
+so `normalizeDddError` works as usual. Download in a component:
+
+```ts
+import { downloadBlob } from '@mgamadeus/ddd-web/api';
+import { useLazyGetApiAdminLibraryBooksExportQuery } from './api/adminApi';
+
+const [trigger, { isFetching }] = useLazyGetApiAdminLibraryBooksExportQuery();
+const onExport = async () => {
+  const { blob, filename } = await trigger({ noCache: true }).unwrap();
+  downloadBlob(blob, filename ?? 'books.xlsx');            // filename comes from Content-Disposition, else null
+};
+```
+
+A `Blob` is not serializable: Redux Toolkit's serializable check warns about it in development. Ignore the path
+(`serializableCheck: { ignoredActionPaths: ['payload.blob'], ignoredPaths: [/\.blob$/] }`) or keep the data out of
+the cache (`keepUnusedDataFor: 0` via `enhanceEndpoints`). Generated endpoints import the package's `api` entry, so the
+app needs `@reduxjs/toolkit` (the `api` peer) installed.
 
 ## 4. Query builders (`/query`)
 
@@ -174,7 +208,7 @@ shouldRefresh: (error, request) =>
 
 Errors: `normalizeDddError(error)` → `{ status, message, validationErrors, details, body }` from an RTK error, a thrown
 `Error` or a raw body (`error` key first, then a text body); `getErrorMessage`, `getErrorStatus` for UI code.
-Downloads: `createDownloadResponseHandler(fallbackName)` as an endpoint's `responseHandler` saves the blob
+Downloads (generated endpoints get `blobResponseHandler` automatically, see 3a): `createDownloadResponseHandler(fallbackName)` as an endpoint's `responseHandler` saves the blob
 and resolves to a serializable `{ filename, contentType, size }`; `blobResponseHandler` returns `{ blob, filename,
 contentType }` instead; `downloadBlob`, `filenameFromContentDisposition` (RFC 5987) for own
 handlers. Apps without a generated auth endpoint: `createAuthEndpoints(api, { loginPath, refreshPath })` injects

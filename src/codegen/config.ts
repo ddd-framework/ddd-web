@@ -3,19 +3,34 @@ import * as path from 'node:path';
 import { createJiti } from 'jiti';
 import type { HttpMethod } from './openapi';
 
+/** Selects operations by HTTP method (optional, case-insensitive) and path (exact string or RegExp). */
+export interface OperationMatcher {
+  method?: Uppercase<HttpMethod> | HttpMethod;
+  path: string | RegExp;
+}
+
 /**
  * Classifies operations by whether they change server state, for specs that do not carry
  * `x-ddd-side-effects` yet. Matches on HTTP method and path (exact string or RegExp).
  */
-export interface SideEffectsOverride {
-  method?: Uppercase<HttpMethod> | HttpMethod;
-  path: string | RegExp;
+export interface SideEffectsOverride extends OperationMatcher {
   sideEffects: boolean;
   /**
    * Force the generated hook kind. Default: a writing GET becomes a mutation, a reading POST becomes a
    * query. `'mutation'` keeps a reading POST a mutation (hook name unchanged) that invalidates nothing.
    */
   endpointType?: 'query' | 'mutation';
+}
+
+/**
+ * Sets how an endpoint reads its successful response, for specs whose declared content type is missing or wrong
+ * (e.g. an Excel export declared as `application/json`). Wins over content-type detection.
+ * - `blob`: `responseHandler: blobResponseHandler`, result type `DddFileResponse` (`{ blob, filename, contentType }`)
+ * - `text`: `responseHandler: "text"`, result type `string`
+ * - `json`: RTK's JSON parsing, no handler (also turns off a detected `text` / `blob`)
+ */
+export interface ResponseHandlerOverride extends OperationMatcher {
+  handler: 'blob' | 'text' | 'json';
 }
 
 export interface HooksOptions {
@@ -51,6 +66,8 @@ export interface SdkApiConfig {
   skipUpdatePostTwins?: boolean;
   /** Added after the global `sideEffects`; the first match wins, so entries here are checked first. RegExp flags `g` / `y` are ignored for matching. */
   sideEffects?: SideEffectsOverride[];
+  /** Added after the global `responseHandlers`; the first match wins, so entries here are checked first. */
+  responseHandlers?: ResponseHandlerOverride[];
   /** Any further RTK codegen option (`argSuffix`, `flattenArg`, `endpointOverrides`, `filterEndpoints`, …). */
   [rtkOption: string]: unknown;
 }
@@ -78,6 +95,11 @@ export interface SdkConfig {
    */
   skipUpdatePostTwins?: boolean;
   sideEffects?: SideEffectsOverride[];
+  /**
+   * Response handler per operation, overriding content-type detection (binary 2xx → `blob`, text-only 2xx → `text`).
+   * First match wins.
+   */
+  responseHandlers?: ResponseHandlerOverride[];
   workspace?: WorkspaceOptions;
   /** tsconfig used for the final type check. Default `tsconfig.json` next to the config file. */
   tsconfig?: string;
@@ -133,6 +155,7 @@ export interface ResolvedApi {
   outputDir: string;
   skipUpdatePostTwins: boolean;
   sideEffects: SideEffectsOverride[];
+  responseHandlers: ResponseHandlerOverride[];
 }
 
 export function resolveApis(loaded: LoadedConfig): ResolvedApi[] {
@@ -159,6 +182,7 @@ export function resolveApis(loaded: LoadedConfig): ResolvedApi[] {
       outputDir: path.dirname(outputFile),
       skipUpdatePostTwins: entry.skipUpdatePostTwins ?? config.skipUpdatePostTwins ?? false,
       sideEffects: [...(entry.sideEffects ?? []), ...(config.sideEffects ?? [])],
+      responseHandlers: [...(entry.responseHandlers ?? []), ...(config.responseHandlers ?? [])],
     };
   });
 }

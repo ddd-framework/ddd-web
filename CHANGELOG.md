@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.2.0
+
+### Added
+- codegen: file responses are detected by their 2xx content types (`application/octet-stream`, `application/zip`,
+  `application/pdf`, `application/vnd.*` incl. spreadsheet types, `text/csv`, `image/*`, `audio/*`, `video/*`,
+  `font/*`; never `…json`). Such endpoints get `responseHandler: blobResponseHandler` (imported from
+  `@mgamadeus/ddd-web/api`) and the result type `DddFileResponse` (`{ blob, filename, contentType }`).
+- codegen: `responseHandlers` overrides in `defineConfig`, globally and per api entry:
+  `{ method?, path: string | RegExp, handler: 'blob' | 'text' | 'json' }`, matched like `sideEffects` (api entry
+  first, first match wins). Overrides win over detection; `json` turns a detected handler off. For specs that declare
+  no or the wrong content type, e.g. `application/json` for an Excel export route.
+- codegen: exported types `ResponseHandlerOverride` and `OperationMatcher`.
+
+### Changed
+- codegen: a forced `text` handler on a JSON-declared response types the result as `string`.
+
+### Migration
+- Regenerate the SDK. Endpoints that return files now resolve to `DddFileResponse` instead of a JSON-parsed body —
+  replace hand-written download endpoints with the generated hooks:
+  `const { blob, filename } = await trigger(args).unwrap(); downloadBlob(blob, filename ?? 'export.xlsx')`.
+- An app with file endpoints imports `@mgamadeus/ddd-web/api` from generated code, so `@reduxjs/toolkit` (the
+  optional peer of `api`) must be installed — it already is for any RTK Query app.
+
 ## 0.1.0
 
 First usable release.

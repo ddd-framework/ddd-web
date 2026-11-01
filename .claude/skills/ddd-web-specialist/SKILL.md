@@ -1,9 +1,9 @@
 ---
 name: ddd-web-specialist
-description: "Use and maintain @mgamadeus/ddd-web, the TypeScript client for mgamadeus/ddd backends. Covers install, openapi-config.ts with defineConfig (schemaFile URL or local snapshot, apiFile, outputFile, modelsDir, skipUpdatePostTwins, sideEffects overrides, baseApiImport, esmExtensions, workspace), the RTK Query SDK from ddd-web-sdk (--config, --api, --schema, --skip-tsc; Enhanced/Tags files, cache tags from x-ddd-entity or path heuristics), QueryOptions builders (buildQueryOptions, combineFilters, buildInFilter, buildFulltextFilter, buildDefinedQueryOptions), createDddBaseQuery (Bearer, shared refresh + retry, shouldRefresh, languageCode, normalizeDddError, downloads), token storage and JWT helpers, contract types (x-ddd-*, DDD date-time, translations), link-skills, and maintaining it (pnpm, tsup, vitest, consumer check, staged npm release, 0.x semver). Use when wiring a frontend to a DDD backend, regenerating the SDK, building filters, fixing token refresh or cache tags, or releasing ddd-web."
+description: "Use and maintain @mgamadeus/ddd-web, the TS client for mgamadeus/ddd backends. Covers openapi-config.ts with defineConfig (schemaFile URL or snapshot, apiFile, outputFile, modelsDir, skipUpdatePostTwins, sideEffects and responseHandlers overrides, baseApiImport, esmExtensions, workspace), the RTK Query SDK from ddd-web-sdk (--config, --api, --schema, --skip-tsc; Enhanced/Tags files, cache tags from x-ddd-entity or path heuristics, file downloads via blobResponseHandler), QueryOptions builders (buildQueryOptions, combineFilters, buildInFilter, buildFulltextFilter), createDddBaseQuery (Bearer, shared refresh + retry, shouldRefresh, normalizeDddError), token storage, JWT helpers, contract types (x-ddd-*, DDD date-time, translations), link-skills, maintaining (pnpm, tsup, vitest, consumer check, staged npm release, 0.x semver). Use when wiring a frontend to a DDD backend, regenerating the SDK, building filters, fixing token refresh or cache tags, downloading an Excel/ZIP/PDF export, or releasing ddd-web."
 metadata:
   author: mgamadeus
-  version: "1.0.0"
+  version: "1.1.0"
   package: "@mgamadeus/ddd-web"
 ---
 
@@ -88,6 +88,10 @@ const { data } = useGetApiAdminLibraryBooksListQuery({
   final `tsc --noEmit` fails.
 - **Regenerate after every backend change** to a route, DTO or entity the app uses; hook names derive from verb + path
   (`useGetApiAdminLibraryBooksListQuery`), so a renamed route is a renamed hook and shows up as a type error.
+- **File routes** (Excel, ZIP, PDF, …) are generated with `blobResponseHandler` and return
+  `DddFileResponse`: `const { blob, filename } = await trigger(args).unwrap(); downloadBlob(blob, filename ?? 'x.xlsx')`.
+  When the spec declares JSON for such a route, add a `responseHandlers` override (`handler: 'blob'`) — never
+  hand-write a stopgap endpoint.
 - **Never build filter strings by concatenation** — use the `query` builders; they escape strings, write lists as JSON
   and group `or` clauses (the backend parser has no precedence).
 - **One refresh policy:** pass `shouldRefresh` instead of wrapping the base query; auth endpoints never refresh.

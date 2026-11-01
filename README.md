@@ -49,6 +49,30 @@ pnpm exec ddd-web link-skills    # link the package's agent skills into .claude/
 
 Subpaths: `@mgamadeus/ddd-web/codegen`, `/query`, `/api`, `/auth`, `/contract`.
 
+### File downloads
+
+Endpoints whose 2xx responses are files (`application/octet-stream`, `application/zip`, `application/pdf`,
+`application/vnd.*` such as Excel, `text/csv`, `image/*`, …) are generated with `blobResponseHandler` and return a
+`DddFileResponse` (`{ blob, filename, contentType }`); text-only responses get `responseHandler: "text"`.
+
+```ts
+import { downloadBlob } from '@mgamadeus/ddd-web/api';
+
+const [trigger] = useLazyGetApiAdminLibraryBooksExportQuery();
+const { blob, filename } = await trigger({}).unwrap();
+downloadBlob(blob, filename ?? 'books.xlsx');
+```
+
+When a spec declares no or the wrong content type (e.g. `application/json` for an Excel export route), set the handler
+in the config; overrides win over detection, the first match wins:
+
+```ts
+export default defineConfig({
+  responseHandlers: [{ method: 'GET', path: /\/export$/, handler: 'blob' }], // 'blob' | 'text' | 'json'
+  apis: [/* … each entry may have its own responseHandlers, checked first */],
+});
+```
+
 ## Agent skill
 
 The package ships the agent skill `ddd-web-specialist` (consumer guide + maintaining guide). Link it into an app's

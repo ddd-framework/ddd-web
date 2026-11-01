@@ -20,7 +20,8 @@ src/
   api/        createDddBaseQuery, refresh coordination, errors, downloads, debug passthrough, auth endpoints
   auth/       token storage adapters, JWT helpers, SSR-safe storage
   codegen/    cli.ts (bins), config.ts (defineConfig, loadConfig), generate.ts (pipeline), spec.ts (load + validate),
-              registry / models / rtk / endpoints / enhance / tags / text-responses / repair / output (atomic commit),
+              registry / models / rtk / endpoints / enhance / tags / response-handlers (text + file detection and
+              injection) / repair / output (atomic commit),
               workspace.ts, link-skills.ts
 test/         vitest suites per subpath; fixtures/specs/sample-admin.json (neutral sample: books, authors);
               consumer/ (installed-package check); fixtures/private/ is ignored — never commit app specs

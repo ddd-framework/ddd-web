@@ -21,10 +21,10 @@ import { indexOperations } from './operations';
 import { commitOutput } from './output';
 import { buildRegistry } from './registry';
 import { repairMissingPathParameters } from './repair';
+import { detectResponseHandlerEndpoints, injectResponseHandlers } from './response-handlers';
 import { findPrettierConfigFile, relativeImport, runRtkCodegen } from './rtk';
 import { loadSpec, validateSpec } from './spec';
 import { collectOperationTags, renderTagsFile } from './tags';
-import { detectTextResponseEndpoints, injectTextResponseHandlers } from './text-responses';
 import { resolveWorkspace } from './workspace';
 
 export interface GenerateSdkOptions {
@@ -148,10 +148,14 @@ export async function generateSdk(options: GenerateSdkOptions = {}): Promise<Gen
 
       const rtk = await runRtkCodegen(api, doc, index, path.join(specDir, `${i}.json`), prettierConfigFile);
       const endpoints = parseApiEndpoints(rtk.code, logger, rtk.locations);
-      const textEndpoints = detectTextResponseEndpoints(doc, endpoints);
-      const textResponseTypes = new Set(
-        endpoints.filter((endpoint) => textEndpoints.has(endpoint.key) && endpoint.responseType).map((endpoint) => endpoint.responseType!),
-      );
+      const handlerEndpoints = detectResponseHandlerEndpoints(doc, endpoints, api.responseHandlers);
+      const responseKinds = new Map<string, 'text' | 'blob'>();
+      for (const endpoint of endpoints) {
+        const kind = handlerEndpoints.get(endpoint.key);
+        if (kind && endpoint.responseType) responseKinds.set(endpoint.responseType, kind);
+      }
+      const fileCount = [...handlerEndpoints.values()].filter((kind) => kind === 'blob').length;
+      if (fileCount > 0) logger.info(`  ${fileCount} file download endpoint(s) (blobResponseHandler)`);
 
       const esm = api.config.esmExtensions === true;
       const apiSource = extractModels({
@@ -162,10 +166,10 @@ export async function generateSdk(options: GenerateSdkOptions = {}): Promise<Gen
         files,
         logger,
         esm,
-        textResponseTypes,
+        responseKinds,
       });
       if (!write) continue;
-      files.set(api.outputFile, injectTextResponseHandlers(apiSource, textEndpoints));
+      files.set(api.outputFile, injectResponseHandlers(apiSource, handlerEndpoints));
 
       const withExtension = (specifier: string): string => (esm ? `${specifier}.js` : specifier);
       const enhanced = buildEnhancedEndpoints({
