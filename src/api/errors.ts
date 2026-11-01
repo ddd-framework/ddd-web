@@ -20,6 +20,29 @@ export interface DddNormalizedError {
 /** Message used when an error carries no message at all. */
 export const DEFAULT_ERROR_MESSAGE = 'Request failed';
 
+/**
+ * Messages for failures that carry no usable backend message. Pass your own (e.g. translated) texts as the third
+ * argument of {@link normalizeDddError} / {@link getErrorMessage}.
+ */
+export interface DddErrorMessages {
+  /** A response that is not JSON (an HTML error page, a PHP fatal) with an HTTP status ≥ 500. */
+  serverError: (status: number) => string;
+  /** A response that is not JSON with an HTTP status < 500. */
+  httpError: (status: number) => string;
+  /** The request never reached the server or got no response (`FETCH_ERROR`). */
+  networkError: string;
+  /** The request timed out (`TIMEOUT_ERROR`). */
+  timeoutError: string;
+}
+
+/** The default {@link DddErrorMessages}. */
+export const DEFAULT_ERROR_MESSAGES: DddErrorMessages = {
+  serverError: (status) => `Server error (HTTP ${status})`,
+  httpError: (status) => `Request failed (HTTP ${status})`,
+  networkError: 'The server could not be reached',
+  timeoutError: 'The request timed out',
+};
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 
@@ -42,16 +65,52 @@ const extractStatus = (error: Record<string, unknown>): number | string | null =
 };
 
 /**
+ * The message of an RTK Query failure that is not a DDD response: an unparsable body (`PARSING_ERROR`), no response
+ * (`FETCH_ERROR`), a timeout (`TIMEOUT_ERROR`); `null` for everything else.
+ */
+const transportFailureMessage = (
+  error: Record<string, unknown>,
+  texts: DddErrorMessages,
+  fallbackMessage: string,
+): string | null => {
+  switch (error.status) {
+    case 'PARSING_ERROR': {
+      const status = typeof error.originalStatus === 'number' ? error.originalStatus : null;
+      if (status === null) return fallbackMessage;
+      return status >= 500 ? texts.serverError(status) : texts.httpError(status);
+    }
+    case 'FETCH_ERROR':
+      return texts.networkError;
+    case 'TIMEOUT_ERROR':
+      return texts.timeoutError;
+    default:
+      return null;
+  }
+};
+
+/**
  * Normalises any API error into {@link DddNormalizedError}.
  *
  * Understands RTK Query's `FetchBaseQueryError` (`{ status, data }`, `{ status: 'FETCH_ERROR', error }`, …),
  * `SerializedError` / `Error` (`message`), errors carrying a parsed `responseBody`, and a bare DDD error body.
  * DDD error bodies put the message under `error` (not `message`).
  *
+ * A response the client could not parse (`PARSING_ERROR`: an HTML error page, a PHP fatal, a proxy's 502) is an HTTP
+ * error: `status` is the HTTP status and the message is {@link DddErrorMessages.serverError} /
+ * {@link DddErrorMessages.httpError} — never the parser's `SyntaxError` text and never the raw body, which may show
+ * internals (the body stays available in `body`). `FETCH_ERROR` and `TIMEOUT_ERROR` get
+ * {@link DddErrorMessages.networkError} / {@link DddErrorMessages.timeoutError} instead of the browser's text.
+ *
  * @param error whatever a request rejected with
  * @param fallbackMessage message when nothing usable is found
+ * @param messages texts for failures without a backend message (default {@link DEFAULT_ERROR_MESSAGES})
  */
-export function normalizeDddError(error: unknown, fallbackMessage: string = DEFAULT_ERROR_MESSAGE): DddNormalizedError {
+export function normalizeDddError(
+  error: unknown,
+  fallbackMessage: string = DEFAULT_ERROR_MESSAGE,
+  messages: Partial<DddErrorMessages> = {},
+): DddNormalizedError {
+  const texts: DddErrorMessages = { ...DEFAULT_ERROR_MESSAGES, ...messages };
   if (!isRecord(error)) {
     return {
       status: null,
@@ -63,6 +122,10 @@ export function normalizeDddError(error: unknown, fallbackMessage: string = DEFA
   }
 
   const body = extractBody(error);
+  const failure = transportFailureMessage(error, texts, fallbackMessage);
+  if (failure !== null) {
+    return { status: extractStatus(error), message: failure, validationErrors: null, details: [], body };
+  }
   const dddBody: DddErrorBody | null = isRecord(body) ? (body as DddErrorBody) : null;
   const bodyRecord: Record<string, unknown> | null = isRecord(body) ? body : null;
 
@@ -90,12 +153,17 @@ export function normalizeDddError(error: unknown, fallbackMessage: string = DEFA
  *
  * @param error whatever a request rejected with
  * @param fallbackMessage message when nothing usable is found
+ * @param messages texts for failures without a backend message
  */
-export function getErrorMessage(error: unknown, fallbackMessage: string = DEFAULT_ERROR_MESSAGE): string {
-  return normalizeDddError(error, fallbackMessage).message;
+export function getErrorMessage(
+  error: unknown,
+  fallbackMessage: string = DEFAULT_ERROR_MESSAGE,
+  messages: Partial<DddErrorMessages> = {},
+): string {
+  return normalizeDddError(error, fallbackMessage, messages).message;
 }
 
-/** HTTP status of an API error, or `null` for non-HTTP failures. */
+/** HTTP status of an API error (also of an unparsable response), or `null` for non-HTTP failures. */
 export function getErrorStatus(error: unknown): number | null {
   const status = normalizeDddError(error).status;
   return typeof status === 'number' ? status : null;

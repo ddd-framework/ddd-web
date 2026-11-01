@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.2
+
+### Fixed
+- api: `normalizeDddError` / `getErrorMessage` / `getErrorStatus` treat a response that is not JSON (RTK
+  `PARSING_ERROR`: an HTML error page, a PHP fatal, a proxy 502) as an HTTP error — `status` is the HTTP status and the
+  message is `Server error (HTTP <status>)` (≥ 500) or `Request failed (HTTP <status>)`, never the parser's
+  `SyntaxError: Unexpected token '<' …` text and never the body (it stays in `body`).
+- api: `FETCH_ERROR` and `TIMEOUT_ERROR` get readable messages (`The server could not be reached`,
+  `The request timed out`) instead of the browser's error text.
+
+### Added
+- api: `DddErrorMessages` / `DEFAULT_ERROR_MESSAGES` and a third argument of `normalizeDddError` / `getErrorMessage`
+  to replace (e.g. translate) these texts.
+
 ## 0.2.1
 
 ### Fixed

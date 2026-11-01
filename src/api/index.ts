@@ -14,8 +14,8 @@ export type {
 } from './baseQuery';
 export { createDddRefresh } from './refresh';
 export type { DddRefreshFn, DddRefreshContext, DddRawBaseQuery } from './refresh';
-export { normalizeDddError, getErrorMessage, getErrorStatus, DEFAULT_ERROR_MESSAGE } from './errors';
-export type { DddNormalizedError } from './errors';
+export { normalizeDddError, getErrorMessage, getErrorStatus, DEFAULT_ERROR_MESSAGE, DEFAULT_ERROR_MESSAGES } from './errors';
+export type { DddNormalizedError, DddErrorMessages } from './errors';
 export {
   downloadBlob,
   blobResponseHandler,
