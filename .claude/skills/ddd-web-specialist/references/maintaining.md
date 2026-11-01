@@ -83,12 +83,11 @@ before it is released. On this side, a new contract number means: types in `cont
    version.
 3. `.github/workflows/release.yml` (tags `v*`): version check, install, typecheck, test, build, pack, tarball check
    **with `--require-skills`** (fails without a `.claude/skills/*/SKILL.md`), consumer checks with npm and pnpm, then
-   `npm stage publish <tarball>` via trusted publishing (OIDC, no token; npm ≥ 11.15.0). Versions with a prerelease
-   suffix (`x.y.z-…`) go to the dist-tag `next`, others to `latest`.
-4. The staged version is not public until a maintainer approves it: `npm stage list @mgamadeus/ddd-web`, then
-   `npm stage approve <stage-id>` (2FA).
+   `npm publish <tarball> --provenance` via trusted publishing (OIDC, no token; npm ≥ 11.5.1). Versions with a
+   prerelease suffix (`x.y.z-…`) go to the dist-tag `next`, others to `latest`. The version is public when the run is
+   green; no manual step.
 
-The verified tarball itself is staged — nothing is rebuilt after the checks. A failed release is fixed with a new
+The verified tarball itself is published — nothing is rebuilt after the checks. A failed release is fixed with a new
 patch version; never re-tag a published version.
 
 ## 5. Versioning and changelog

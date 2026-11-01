@@ -1,11 +1,9 @@
 name: Release
 
-# Pushing a tag vX.Y.Z (the version in package.json) builds, verifies and STAGES the package on npm via trusted
-# publishing (OIDC, no token). A staged version is not public until a maintainer approves it with 2FA:
-#   npm stage list @mgamadeus/ddd-web
-#   npm stage approve <stage-id>
-# npm side (once): a trusted publisher for this repository and workflow file (release.yml) with stage publish allowed,
-# e.g. `npm trust github @mgamadeus/ddd-web --repository mgamadeus/ddd-web --file release.yml --allow-stage-publish`.
+# Pushing a tag vX.Y.Z (the version in package.json) builds, verifies and PUBLISHES the package on npm via trusted
+# publishing (OIDC, no token) with provenance. Only this workflow file in this repository may publish.
+# npm side (once): a trusted publisher for this repository and workflow file (release.yml) with publish allowed,
+# e.g. `npm trust github @mgamadeus/ddd-web --repository mgamadeus/ddd-web --file release.yml --allow-publish`.
 
 on:
   push:
@@ -33,9 +31,8 @@ jobs:
           node-version: 22
       - name: Enable corepack (pnpm version from package.json)
         run: npm i -g corepack@latest && corepack enable
-      # `npm stage publish` exists from npm 11.15.0 on (trusted publishing / OIDC from 11.5.1); stage publish
-      # inherits publish's OIDC token exchange.
-      - name: Install npm with staged publishing
+      # Trusted publishing (OIDC) needs npm 11.5.1 or newer.
+      - name: Install npm with trusted publishing
         run: |
           npm install -g npm@11
           node -e '
@@ -71,10 +68,10 @@ jobs:
         run: test/consumer/run.sh "$(ls "$RUNNER_TEMP"/mgamadeus-ddd-web-*.tgz)" npm "$RUNNER_TEMP/consumer-npm"
       - name: Consumer check with pnpm
         run: test/consumer/run.sh "$(ls "$RUNNER_TEMP"/mgamadeus-ddd-web-*.tgz)" pnpm "$RUNNER_TEMP/consumer-pnpm"
-      # The verified tarball itself is staged (no rebuild). Prerelease versions (x.y.z-…) need an explicit dist-tag.
-      - name: Stage publish (trusted publishing)
+      # The verified tarball itself is published (no rebuild). Prerelease versions (x.y.z-…) need an explicit dist-tag.
+      - name: Publish (trusted publishing, provenance)
         run: |
           VERSION=$(node -p "require('./package.json').version")
           case "$VERSION" in *-*) DIST_TAG=next ;; *) DIST_TAG=latest ;; esac
           unset NODE_AUTH_TOKEN
-          npm stage publish "$(ls "$RUNNER_TEMP"/mgamadeus-ddd-web-*.tgz)" --tag "$DIST_TAG" --access public --registry https://registry.npmjs.org
+          npm publish "$(ls "$RUNNER_TEMP"/mgamadeus-ddd-web-*.tgz)" --provenance --tag "$DIST_TAG" --access public --registry https://registry.npmjs.org

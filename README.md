@@ -88,8 +88,8 @@ pnpm typecheck && pnpm test && pnpm build
 pnpm pack && test/consumer/run.sh mgamadeus-ddd-web-*.tgz pnpm /tmp/ddd-web-consumer   # installed-package check
 ```
 
-Releases: push a tag `vX.Y.Z` matching `package.json`; the release workflow verifies the package and stages it on
-npm (trusted publishing). A maintainer approves the staged version with `npm stage approve <stage-id>`.
+Releases: push a tag `vX.Y.Z` matching `package.json`; the release workflow verifies the package and publishes it on
+npm (trusted publishing with provenance).
 
 ## License
 
