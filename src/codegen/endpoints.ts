@@ -24,6 +24,11 @@ export interface EndpointInfo {
    * `{ id: 'arg' }` with `flattenArg`. Independent of `encodePathParams`.
    */
   pathArgs: Record<string, string>;
+  /**
+   * Expression reading the request body from the endpoint argument `arg`, e.g. `arg.bookUpdateRequestDto`, or `arg`
+   * with `flattenArg`. Absent when the endpoint sends no body.
+   */
+  bodyArg?: string;
   /** Name of the response type (first type argument of `build.query<…>` / `build.mutation<…>`). */
   responseType?: string;
 }
@@ -94,6 +99,7 @@ function readEndpoint(
     let url: string | undefined;
     let method: string | undefined;
     let accessors: string[] = [];
+    let bodyArg: string | undefined;
     for (const member of returned.properties) {
       if (!ts.isPropertyAssignment(member) || !ts.isIdentifier(member.name)) continue;
       const init = member.initializer;
@@ -105,6 +111,10 @@ function readEndpoint(
         }
       }
       if (member.name.text === 'method' && ts.isStringLiteral(init)) method = init.text;
+      if (member.name.text === 'body' && (ts.isIdentifier(init) || ts.isPropertyAccessExpression(init))) {
+        const text = init.getText(sourceFile);
+        if (/^queryArg(\.[A-Za-z_$][A-Za-z0-9_$]*)*$/.test(text)) bodyArg = text.replace(/^queryArg\b/, 'arg');
+      }
     }
     if (url === undefined) {
       logger.warn(`No extractable URL for endpoint "${key}" — skipping.`);
@@ -124,6 +134,7 @@ function readEndpoint(
       method: (location?.method ?? method ?? 'GET').toUpperCase(),
       path,
       pathArgs,
+      ...(bodyArg ? { bodyArg } : {}),
       ...(responseType ? { responseType } : {}),
     };
   }

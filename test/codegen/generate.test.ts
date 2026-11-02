@@ -92,7 +92,9 @@ describe('generateSdk on the sample spec', () => {
     const upsert = enhancedEntry(enhanced, 'patchApiAdminLibraryBooks');
     expect(upsert).toContain('invalidatesTags');
     expect(upsert).toContain(`{ type: "Books" as const, id: "LIST" }`);
-    expect(upsert).toContain(`{ type: "Books" as const }`);
+    // the body identity of x-ddd-entity (`body:book.id`), only while the body carries an id
+    expect(upsert).toContain(`...tagWithId( "Books" as const, arg?.appPresentationApiAdminLibraryDtosBooksBookUpdateRequestDto?.book ?.id, )`);
+    expect(upsert).not.toContain(`{ type: "Books" as const }`);
     const deletion = enhancedEntry(enhanced, 'deleteApiAdminLibraryBooksByBookId');
     expect(deletion).toContain('id: arg.bookId');
     expect(deletion).toContain(`id: "LIST"`);
@@ -105,9 +107,13 @@ describe('generateSdk on the sample spec', () => {
   it('keeps the URL heuristic without x-ddd-entity', () => {
     expect(enhancedEntry(enhanced, 'getApiAdminLibraryAuthorsByAuthorId')).toContain('id: arg.authorId');
     expect(enhancedEntry(enhanced, 'getApiAdminLibraryAuthorsList')).toContain(`id: "LIST"`);
-    // unknown writes invalidate the whole entity tag
+    // a write with an entity path parameter (action suffix) invalidates that entity + LIST
     expect(enhancedEntry(enhanced, 'postApiAdminLibraryBooksByBookIdPublish')).toContain(
-      `invalidatesTags: [ { type: "Books" as const, id: "LIST" }, { type: "Books" as const }, ]`,
+      `invalidatesTags: (_result: unknown, _error: unknown, arg: any) => [ { type: "Books" as const, id: arg.bookId }, { type: "Books" as const, id: "LIST" }, ]`,
+    );
+    // a write without identity invalidates the whole entity tag
+    expect(enhancedEntry(enhanced, 'postApiAdminLibraryAuthorsMerge')).toContain(
+      `invalidatesTags: [ { type: "Authors" as const, id: "LIST" }, { type: "Authors" as const }, ]`,
     );
   });
 

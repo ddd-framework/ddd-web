@@ -33,6 +33,7 @@ too). A plain RTK-codegen file with `export const apis = [...]` is accepted as w
 | `skipUpdatePostTwins` | Overrides the global setting for this api. |
 | `sideEffects` | Overrides checked before the global ones (first match wins). |
 | `responseHandlers` | Overrides checked before the global ones (first match wins). |
+| `invalidation` | Resolver checked before the global one (see section 3). |
 | `esmExtensions` | `true` for `moduleResolution: nodenext`: generated relative imports end in `.js`. |
 | any other key | Passed to RTK codegen (`argSuffix`, `flattenArg`, `endpointOverrides`, `filterEndpoints`, …). |
 
@@ -44,6 +45,7 @@ too). A plain RTK-codegen file with `export const apis = [...]` is accepted as w
 | `skipUpdatePostTwins` | DDD `#[Update]` serves the same route as PATCH and POST; `true` generates only the PATCH hook. With `x-ddd-entity` both must be `upsert` of the same entity; without it summary, parameters, body and responses must be identical. Conflicting annotations never skip. Default `false` (keep it `false` when app code already calls the POST hooks). |
 | `sideEffects` | `SideEffectsOverride[]` for specs without `x-ddd-side-effects`: `{ method?, path: string \| RegExp, sideEffects, endpointType? }`. A writing GET becomes a mutation, a reading POST a query; `endpointType: 'mutation'` keeps a reading POST a mutation that invalidates nothing. |
 | `responseHandlers` | `ResponseHandlerOverride[]`: `{ method?, path: string \| RegExp, handler: 'blob' \| 'text' \| 'json' }`, same matching as `sideEffects`. Wins over content-type detection — for specs that declare no or the wrong content type (a DDD backend often declares `application/json` for an Excel export). `json` turns a detected handler off. See section 3a. |
+| `invalidation` | `(operation: InvalidationOperation) => InvalidationTag[] \| undefined`: overrides the tags a mutation invalidates; `undefined` keeps the default. `broadInvalidation` (exported) restores the 0.2 behaviour. See section 3. |
 | `workspace` | `{ envVar, envFiles?, urlKeys?, prompt? }`: resolves a workspace / subdomain value (CLI `--workspace` → env → URL sniffed from `.env` / `.env.local` → TTY prompt) into `process.env[envVar]` before the config is evaluated again. |
 | `tsconfig` | tsconfig of the final type check. Default `tsconfig.json` next to the config. |
 
@@ -99,13 +101,45 @@ Add a script: `"gen:sdk": "ddd-web-sdk"`. Commit the generated files and, if you
 Tag per endpoint: the entity of `x-ddd-entity` when present, else the operation tag, else the last path segment that
 names a known tag (warning when none is found — the endpoint gets no tags).
 
-| Endpoint | With `x-ddd-entity` | Without (path heuristic) |
+| Endpoint | With `x-ddd-entity` (authoritative) | Without (identity heuristic) |
 |---|---|---|
 | query, single (`…/{id}`) | provides `{ type, id }` | provides `{ type, id }` when the path is `/<collection>/{id}` |
-| query, list / filter | provides `{ type, id: 'LIST' }` | same |
-| upsert / delete with a path identity | invalidates `{ type, id }` + LIST | — |
-| any other write | invalidates LIST + the whole tag | invalidates LIST + the whole tag |
+| query, list / filter / action suffix | provides `{ type, id: 'LIST' }` | same |
+| write with a path identity | upsert / delete with `identity: path:…`: invalidates `{ type, id }` + LIST | a path parameter naming the entity (`{bookId}` for `Books`) or right after its collection segment (`/books/{id}`): invalidates `{ type, id }` + LIST — also with an action suffix (`DELETE /books/{bookId}/cover`, `POST /books/{bookId}/publish`) |
+| write with a body identity | upsert with `identity: body:book.id`: invalidates LIST + `{ type, id }` | the request DTO has exactly one property holding an entity of the tag (`{ book: Book }` → `book.id`, or the body is the entity): invalidates LIST + `{ type, id }` |
+| write without identity (merge, batch, `action`, a path parameter of another entity) | invalidates LIST + the whole tag | invalidates LIST + the whole tag |
 | mutation without side effects | invalidates nothing | invalidates nothing |
+
+A body identity is read with optional chaining and added only while it is set (helper `tagWithId` in the enhanced
+file): a create without id invalidates LIST alone, because `{ type, id: undefined }` would hit the whole tag type.
+A path parameter that names another entity (`/books/{authorId}/import` under `Books`) is not an identity.
+
+What a write does **not** invalidate: other tag types (writing a book does not refresh authors) and, for a write by
+identity, single-entity queries of other ids of the same type. Where a write changes more than its own entity, add an
+`invalidation` resolver:
+
+```ts
+import { defineConfig, type InvalidationResolver } from '@mgamadeus/ddd-web/codegen';
+
+const invalidation: InvalidationResolver = (operation) => {
+  // operation: { key, api, method, path, tag, operation?, entity?, sideEffects, pathArgs, bodyArg?, defaultTags }
+  if (operation.key === 'postApiAdminLibraryBooksByBookIdPublish') {
+    return [...operation.defaultTags, { type: 'Authors', id: 'LIST' }];   // also refresh author lists
+  }
+  if (operation.path.endsWith('/merge') && operation.tag) return [{ type: operation.tag, id: 'LIST' }, operation.tag];
+  return undefined;                                                       // keep the default
+};
+
+export default defineConfig({ invalidation, apis: [/* … */] });
+```
+
+`InvalidationTag`: `'Books'` = every cached entry of the type; `{ type, id }` = a literal id (`'LIST'`);
+`{ type, arg }` = the id read from the endpoint argument by a dotted path (`operation.pathArgs.bookId`,
+`` `${operation.bodyArg}.book.id` ``; `''` = the argument itself with `flattenArg`). Resolver tag types are registered in
+`addTagTypes` and the tags file. The resolver runs for every generated mutation (also side-effect-free ones, whose
+default is `[]`); api-entry resolver first, then the global one; an invalid result aborts the generation.
+`invalidation: broadInvalidation` restores the 0.2 output (every write without an `x-ddd-entity` path identity
+invalidates LIST + its whole tag type).
 
 ## 3a. File downloads and text responses
 
@@ -272,6 +306,7 @@ Idempotent; an existing symlink is repointed, a real file or directory is never 
 | `All apis must share one output directory when modelsDir is not set` | Set `modelsDir` |
 | `type check failed — previous output restored` | Fix the reported type error (often app code using a renamed hook), or `--skip-tsc` to inspect |
 | A list does not refresh after a write | `<stem>Enhanced.ts` not imported; or the write has no tag — see section 3 |
+| A screen shows stale data after a write that changes more than its own entity | Writes invalidate by identity since 0.3 — add an `invalidation` resolver for that endpoint (section 3), or `broadInvalidation` for the 0.2 behaviour |
 | Every request logs out after a 401 | `refreshPath` wrong, or the refresh response lacks `accessToken` |
 | Dates off by the zone offset | DDD date-times are UTC without offset: use `parseDddDateTime` |
 | 400 on a filter that looks right | Column kind / FULLTEXT / options: validate with `buildDefinedFilter` when `x-ddd-query` is available |

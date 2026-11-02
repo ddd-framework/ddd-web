@@ -1,9 +1,9 @@
 ---
 name: ddd-web-specialist
-description: "Use and maintain @mgamadeus/ddd-web, the TS client for mgamadeus/ddd backends. Covers openapi-config.ts with defineConfig (schemaFile URL or snapshot, apiFile, outputFile, modelsDir, skipUpdatePostTwins, sideEffects and responseHandlers overrides, baseApiImport, esmExtensions, workspace), the RTK Query SDK from ddd-web-sdk (--config, --api, --schema, --skip-tsc; Enhanced/Tags files, cache tags from x-ddd-entity or path heuristics, file downloads via blobResponseHandler), QueryOptions builders (buildQueryOptions, combineFilters, buildInFilter, buildFulltextFilter), createDddBaseQuery (Bearer, shared refresh + retry, shouldRefresh, normalizeDddError), token storage, JWT helpers, contract types (x-ddd-*, DDD date-time, translations), link-skills, maintaining (pnpm, tsup, vitest, consumer check, trusted-publishing npm release, 0.x semver). Use when wiring a frontend to a DDD backend, regenerating the SDK, building filters, fixing token refresh or cache tags, downloading an Excel/ZIP/PDF export, or releasing ddd-web."
+description: "Use and maintain @mgamadeus/ddd-web, the TS client of mgamadeus/ddd. Covers openapi-config.ts with defineConfig (schemaFile, apiFile, outputFile, modelsDir, skipUpdatePostTwins, sideEffects and responseHandlers overrides, invalidation resolver, baseApiImport, esmExtensions, workspace), the RTK Query SDK from ddd-web-sdk (--api, --schema, --skip-tsc; Enhanced/Tags files, cache tags by entity identity, file downloads via blobResponseHandler), QueryOptions builders (buildQueryOptions, combineFilters, buildInFilter, buildFulltextFilter), createDddBaseQuery (Bearer, shared refresh + retry, shouldRefresh, normalizeDddError), token storage, JWT helpers, contract types (x-ddd-*, DDD date-time, translations), link-skills, maintaining (pnpm, vitest, consumer check, trusted-publishing release, 0.x semver). Use when wiring a frontend to a DDD backend, regenerating the SDK, building filters, fixing token refresh, cache tags or refetch storms, downloading an Excel/ZIP/PDF export, or releasing ddd-web."
 metadata:
   author: mgamadeus
-  version: "1.1.0"
+  version: "1.2.0"
   package: "@mgamadeus/ddd-web"
 ---
 
@@ -97,9 +97,12 @@ const { data } = useGetApiAdminLibraryBooksListQuery({
 - **One refresh policy:** pass `shouldRefresh` instead of wrapping the base query; auth endpoints never refresh.
 - **The spec must keep its `<SchemaDefinition schemaRef="…"/>` tag markup** — never fetch it with
   `removeSchemaTags=1`; the codegen aborts without it.
-- `x-ddd-*` extensions are optional: without them the codegen falls back to HTTP-method and path heuristics and
-  invalidates conservatively. A spec without `info.x-ddd-contract` is read as a pre-contract DDD spec (warning); an
-  unsupported contract number aborts.
+- `x-ddd-*` extensions are optional: without them the codegen falls back to HTTP-method, path and request-body
+  heuristics. **Cache invalidation is by identity:** a write invalidates `{ type, id }` + LIST (identity from
+  `x-ddd-entity`, a `{…Id}` path parameter even with an action suffix, or the request DTO's `<entity>.id`); only a write
+  without identity invalidates its whole tag type. Writes that change more than their own entity get an
+  `invalidation` resolver in the config (`broadInvalidation` = the 0.2 behaviour). A spec without
+  `info.x-ddd-contract` is read as a pre-contract DDD spec (warning); an unsupported contract number aborts.
 
 ## References
 

@@ -20,7 +20,8 @@ those conventions into frontend code:
 
 It contains no UI components and no domain logic; apps bring their own design system and business screens.
 Works with the OpenAPI output of current mgamadeus/ddd backends. The `x-ddd-*` extensions (contract version 1) are used
-when a backend emits them; without them the generator falls back to path heuristics and prints a warning.
+when a backend emits them; without them the generator falls back to path and request-body heuristics and prints a
+warning.
 
 ## Usage
 
@@ -70,6 +71,27 @@ in the config; overrides win over detection, the first match wins:
 export default defineConfig({
   responseHandlers: [{ method: 'GET', path: /\/export$/, handler: 'blob' }], // 'blob' | 'text' | 'json'
   apis: [/* … each entry may have its own responseHandlers, checked first */],
+});
+```
+
+### Cache invalidation
+
+Each mutation invalidates the entity it writes plus the lists of its tag type (`{ type, id }` + `{ type, id: 'LIST' }`).
+The identity comes from `x-ddd-entity` when present, else from a path parameter naming the entity (`{bookId}`, also
+`/books/{bookId}/publish`) or from the request DTO's entity property (`book.id`; a create without id invalidates LIST
+only). Only a write without identity invalidates its whole tag type. To change the tags of single endpoints, add a
+resolver; returning `undefined` keeps the default:
+
+```ts
+import { defineConfig } from '@mgamadeus/ddd-web/codegen';
+
+export default defineConfig({
+  invalidation: (operation) =>
+    operation.path.endsWith('/merge') && operation.tag
+      ? [{ type: operation.tag, id: 'LIST' }, operation.tag]   // 'Books' = every cached entry of the type
+      : undefined,
+  // or `invalidation: broadInvalidation` (also exported from /codegen): the 0.2 behaviour, writes invalidate their whole tag type
+  apis: [/* … each entry may have its own invalidation, checked first */],
 });
 ```
 

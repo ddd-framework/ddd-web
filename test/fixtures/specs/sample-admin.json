@@ -1019,6 +1019,147 @@
         ]
       }
     },
+    "/api/admin/library/authors/{authorId}/portrait": {
+      "delete": {
+        "summary": "Author Portrait Deletion",
+        "parameters": [
+          {
+            "name": "authorId",
+            "description": "The id of the Author",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "noCache",
+            "description": "Common request parameter — see \"Shared request parameters\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "outputFormat",
+            "description": "Common request parameter — see \"Shared request parameters\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/App.Presentation.Api.Admin.Library.Dtos.Authors.AuthorGetResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "BadRequest: The data provided does not match requirements",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DDD.Infrastructure.Exceptions.BadRequestException"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "InternalError: An internal error has occured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DDD.Infrastructure.Exceptions.InternalErrorException"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Authors "
+        ]
+      }
+    },
+    "/api/admin/library/authors/merge": {
+      "post": {
+        "summary": "Authors Merge",
+        "parameters": [
+          {
+            "name": "noCache",
+            "description": "Common request parameter — see \"Shared request parameters\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "outputFormat",
+            "description": "Common request parameter — see \"Shared request parameters\".",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/App.Presentation.Api.Admin.Library.Dtos.Authors.AuthorMergeRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/App.Presentation.Api.Admin.Library.Dtos.Authors.AuthorGetResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "BadRequest: The data provided does not match requirements",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DDD.Infrastructure.Exceptions.BadRequestException"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "InternalError: An internal error has occured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DDD.Infrastructure.Exceptions.InternalErrorException"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Authors "
+        ],
+        "description": "Merges authors into the author to keep"
+      }
+    },
     "/api/admin/library/authors": {
       "patch": {
         "summary": "Author Update",
@@ -1540,6 +1681,21 @@
           "author"
         ]
       },
+      "App.Presentation.Api.Admin.Library.Dtos.Authors.AuthorMergeRequestDto": {
+        "type": "object",
+        "properties": {
+          "authorToKeep": {
+            "$ref": "#/components/schemas/App.Domain.Library.Entities.Authors.Author"
+          },
+          "authorsToMerge": {
+            "$ref": "#/components/schemas/App.Domain.Library.Entities.Authors.Authors"
+          }
+        },
+        "required": [
+          "authorToKeep",
+          "authorsToMerge"
+        ]
+      },
       "App.Presentation.Api.Admin.Common.Dtos.DeleteResponseDto": {
         "type": "object",
         "properties": {
@@ -1619,6 +1775,10 @@
     {
       "name": "AuthorUpdateRequestDto",
       "description": "<SchemaDefinition schemaRef=\"#/components/schemas/App.Presentation.Api.Admin.Library.Dtos.Authors.AuthorUpdateRequestDto\" />"
+    },
+    {
+      "name": "AuthorMergeRequestDto",
+      "description": "<SchemaDefinition schemaRef=\"#/components/schemas/App.Presentation.Api.Admin.Library.Dtos.Authors.AuthorMergeRequestDto\" />"
     },
     {
       "name": "AuthorsGetResponseDto",

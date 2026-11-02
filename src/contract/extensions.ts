@@ -101,7 +101,10 @@ export interface DddQueryDefinition {
 /** `x-ddd-entity.action`. DDD `#[Update]` is an upsert. */
 export type DddEntityAction = 'list' | 'get' | 'upsert' | 'delete' | 'action';
 
-/** `x-ddd-entity` on an operation. Absent = unknown entity, clients invalidate conservatively. */
+/**
+ * `x-ddd-entity` on an operation. Absent = unknown entity: clients derive the identity from the path or the request body
+ * and invalidate the whole tag type only when none is found.
+ */
 export interface DddEntityInfo {
   /** Entity schema name, e.g. `App.Domain.Library.Entities.Books.Book`. */
   schema: string;

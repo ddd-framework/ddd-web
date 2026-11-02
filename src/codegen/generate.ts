@@ -174,13 +174,16 @@ export async function generateSdk(options: GenerateSdkOptions = {}): Promise<Gen
       const withExtension = (specifier: string): string => (esm ? `${specifier}.js` : specifier);
       const enhanced = buildEnhancedEndpoints({
         stem: api.stem,
+        apiName: api.exportName,
         apiModuleImport: withExtension(`./${api.stem}`),
         baseApiImport: api.config.baseApiImport ?? withExtension(relativeImport(api.outputDir, api.apiFile).replace(/\.[cm]?[jt]sx?$/, '')),
         baseApiName: api.config.apiImport ?? 'api',
         audience: api.audience,
         endpoints,
         index,
+        doc,
         operationTags: collectOperationTags(doc, api.audience),
+        invalidation: api.invalidation,
         logger,
       });
       files.set(path.join(api.outputDir, `${api.stem}Enhanced.ts`), enhanced.source);

@@ -14,7 +14,7 @@ type Matcher = string | RegExp | Array<string | RegExp> | ((name: string, defini
 type EndpointOverride = { pattern?: Matcher; type?: 'query' | 'mutation'; [option: string]: unknown };
 
 /** Keys of the api config that are ddd-web's own and must not reach RTK codegen. */
-const OWN_KEYS = new Set(['schemaFile', 'apiFile', 'outputFile', 'audience', 'baseApiImport', 'skipUpdatePostTwins', 'sideEffects', 'responseHandlers']);
+const OWN_KEYS = new Set(['schemaFile', 'apiFile', 'outputFile', 'audience', 'baseApiImport', 'skipUpdatePostTwins', 'sideEffects', 'responseHandlers', 'invalidation']);
 
 /** RTK codegen's matcher semantics (an absent pattern matches everything); RegExps are tested statelessly. */
 function matches(matcher: Matcher | undefined, name: string, definition: RtkOperationDefinition): boolean {

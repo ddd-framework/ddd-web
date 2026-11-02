@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { createJiti } from 'jiti';
-import type { HttpMethod } from './openapi';
+import type { DddEntityExtension, HttpMethod, OpenApiOperation } from './openapi';
 
 /** Selects operations by HTTP method (optional, case-insensitive) and path (exact string or RegExp). */
 export interface OperationMatcher {
@@ -32,6 +32,48 @@ export interface SideEffectsOverride extends OperationMatcher {
 export interface ResponseHandlerOverride extends OperationMatcher {
   handler: 'blob' | 'text' | 'json';
 }
+
+/**
+ * One cache tag a mutation invalidates, as returned by an `invalidation` resolver:
+ * - `'Books'`: every cached entry of the tag type (`{ type: 'Books' }`)
+ * - `{ type: 'Books', id: 'LIST' }`: a literal id (lists and filters provide `'LIST'`)
+ * - `{ type: 'Books', arg: 'bookId' }`: the id read from the endpoint argument by a dotted path
+ *   (`'bookUpdateRequestDto.book.id'`; `''` = the argument itself, e.g. with `flattenArg`). A path parameter is read
+ *   as it is; any other path is optional-chained and the tag is left out while the value is `null` / `undefined` (a
+ *   create without id), because `{ type, id: undefined }` would invalidate the whole tag type.
+ */
+export type InvalidationTag = string | { type: string; id: string | number } | { type: string; arg: string };
+
+/** What an `invalidation` resolver gets for each generated mutation endpoint. */
+export interface InvalidationOperation {
+  /** Endpoint key in the generated api file, e.g. `patchApiAdminLibraryBooks`. */
+  key: string;
+  /** `exportName` of the api entry. */
+  api: string;
+  method: Uppercase<HttpMethod>;
+  /** OpenAPI path, e.g. `/api/admin/library/books/{bookId}`. */
+  path: string;
+  /** Cache tag type chosen for the endpoint (entity, operation tag or path segment); `null` when none was found. */
+  tag: string | null;
+  /** The OpenAPI operation; absent when the endpoint could not be mapped back to one. */
+  operation?: OpenApiOperation;
+  /** `x-ddd-entity` of the operation, when present. */
+  entity?: DddEntityExtension;
+  /** Resolved side-effect classification; `false` = the default invalidates nothing. */
+  sideEffects: boolean;
+  /** Path parameter → dotted path in the endpoint argument (usable as `arg` of an {@link InvalidationTag}). */
+  pathArgs: Record<string, string>;
+  /** Dotted path of the request body in the endpoint argument (`''` = the argument itself); absent without body. */
+  bodyArg?: string;
+  /** Tags the generator emits when the resolver returns `undefined`. */
+  defaultTags: InvalidationTag[];
+}
+
+/**
+ * Overrides the tags a mutation invalidates. Return a list (an empty list invalidates nothing) or `undefined` to keep
+ * the default. Called for every generated mutation endpoint.
+ */
+export type InvalidationResolver = (operation: InvalidationOperation) => InvalidationTag[] | undefined;
 
 export interface HooksOptions {
   queries: boolean;
@@ -68,6 +110,8 @@ export interface SdkApiConfig {
   sideEffects?: SideEffectsOverride[];
   /** Added after the global `responseHandlers`; the first match wins, so entries here are checked first. */
   responseHandlers?: ResponseHandlerOverride[];
+  /** Checked before the global `invalidation`; the first resolver that returns a list wins. */
+  invalidation?: InvalidationResolver;
   /** Any further RTK codegen option (`argSuffix`, `flattenArg`, `endpointOverrides`, `filterEndpoints`, …). */
   [rtkOption: string]: unknown;
 }
@@ -100,6 +144,12 @@ export interface SdkConfig {
    * First match wins.
    */
   responseHandlers?: ResponseHandlerOverride[];
+  /**
+   * Escape hatch for the tags a mutation invalidates (see {@link InvalidationResolver}); `undefined` from the resolver
+   * keeps the default. `broadInvalidation` restores the 0.2 behaviour (writes without an identity from `x-ddd-entity`
+   * invalidate their whole tag type).
+   */
+  invalidation?: InvalidationResolver;
   workspace?: WorkspaceOptions;
   /** tsconfig used for the final type check. Default `tsconfig.json` next to the config file. */
   tsconfig?: string;
@@ -156,6 +206,8 @@ export interface ResolvedApi {
   skipUpdatePostTwins: boolean;
   sideEffects: SideEffectsOverride[];
   responseHandlers: ResponseHandlerOverride[];
+  /** Api entry resolver first, then the global one. */
+  invalidation: InvalidationResolver[];
 }
 
 export function resolveApis(loaded: LoadedConfig): ResolvedApi[] {
@@ -183,6 +235,9 @@ export function resolveApis(loaded: LoadedConfig): ResolvedApi[] {
       skipUpdatePostTwins: entry.skipUpdatePostTwins ?? config.skipUpdatePostTwins ?? false,
       sideEffects: [...(entry.sideEffects ?? []), ...(config.sideEffects ?? [])],
       responseHandlers: [...(entry.responseHandlers ?? []), ...(config.responseHandlers ?? [])],
+      invalidation: [entry.invalidation, config.invalidation].filter(
+        (resolver): resolver is InvalidationResolver => typeof resolver === 'function',
+      ),
     };
   });
 }

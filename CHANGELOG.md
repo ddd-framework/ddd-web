@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.3.0
+
+Cache invalidation by identity. Minor release because the default output changes: writes that invalidated their whole
+tag type now invalidate only the entity they write plus LIST.
+
+### Changed
+- codegen: a mutation without `x-ddd-entity` derives the identity of the entity it writes and invalidates
+  `{ type, id }` + `{ type, id: 'LIST' }` instead of LIST + every cached entry of the tag type:
+  - a path parameter naming the tag's entity (`{bookId}` for `Books`), also with an action suffix
+    (`DELETE /books/{bookId}/cover`, `POST /books/{bookId}/publish`), or a parameter right after the tag's collection
+    segment that names no other entity (`/books/{id}`);
+  - else the entity property of the request DTO (`{ book: Book }` → `<body>.book.id`, or `<body>.id` when the body is
+    the entity). The id tag is only added while the body carries an id, so a create invalidates LIST alone. A body
+    with a set, a list or a second entity of the tag (merge, batch) has no single identity.
+  - Only a write without identity still invalidates LIST + the whole tag type.
+- codegen: `x-ddd-entity` stays authoritative; its `body:<path>` identity on an upsert is now used as well
+  (LIST + the entity while the body carries an id) instead of invalidating the whole tag type.
+- The enhanced file contains a small `tagWithId` helper when a body identity is used.
+
+### Added
+- codegen: `invalidation?: (operation) => InvalidationTag[] | undefined` in `defineConfig`, globally and per api entry
+  (api entry first, the first resolver that returns a list wins; `undefined` keeps the default). It gets the endpoint
+  key, method, path, chosen tag, operation, `x-ddd-entity`, side-effect classification, path / body argument paths and
+  the default tags. Tags: `'Books'` (whole type), `{ type, id }` (literal id, e.g. `'LIST'`), `{ type, arg }` (id read
+  from the endpoint argument by a dotted path). Tag types introduced by a resolver are registered.
+- codegen: `broadInvalidation`, a resolver that restores the 0.2 output.
+- codegen: exported types `InvalidationTag`, `InvalidationOperation`, `InvalidationResolver`.
+
+### Migration
+- Regenerate the SDK. Screens refetch less after a write.
+- A screen that relied on the broad invalidation (e.g. an action that changes other entities of the same type, or a
+  single-entity query whose cache tag does not match the written id) may now show stale data. Fix it per endpoint
+  with an `invalidation` resolver, or keep the old behaviour entirely with
+  `defineConfig({ invalidation: broadInvalidation, … })`.
+
 ## 0.2.2
 
 ### Fixed

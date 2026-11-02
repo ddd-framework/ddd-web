@@ -1,6 +1,9 @@
 export { defineConfig, loadConfig } from './config';
 export type {
   HooksOptions,
+  InvalidationOperation,
+  InvalidationResolver,
+  InvalidationTag,
   LoadedConfig,
   OperationMatcher,
   ResponseHandlerOverride,
@@ -9,6 +12,7 @@ export type {
   SideEffectsOverride,
   WorkspaceOptions,
 } from './config';
+export { broadInvalidation } from './enhance';
 export { generateSdk } from './generate';
 export type { GenerateSdkOptions, GenerateSdkResult } from './generate';
 export { linkSkills } from './link-skills';

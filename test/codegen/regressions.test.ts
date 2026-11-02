@@ -77,13 +77,17 @@ describe('codegen regressions', () => {
     }, 60_000);
   }
 
-  it('invalidates the whole entity tag for writes without x-ddd-entity', async () => {
+  it('invalidates by identity for writes without x-ddd-entity, the whole tag only without identity', async () => {
     const app = newApp();
     await generateSdk({ cwd: app, config: { apis: [apiEntry(SAMPLE_SPEC)] }, logger: silentLogger, skipTsc: true });
     const enhanced = read(app, 'src/api/adminApiEnhanced.ts');
-    for (const key of ['postApiAdminLibraryAuthors', 'patchApiAdminLibraryAuthors', 'postApiAdminLibraryBooksByBookIdPublish', 'deleteApiAdminLibraryAuthorsByAuthorId']) {
-      expect(enhancedEntry(enhanced, key), key).toMatch(/invalidatesTags: (\(.*\) => )?\[[^\]]*\{ type: "(Authors|Books)" as const \}/);
+    const wholeType = /\{ type: "(Authors|Books)" as const \}/;
+    for (const key of ['postApiAdminLibraryAuthors', 'patchApiAdminLibraryAuthors', 'postApiAdminLibraryBooksByBookIdPublish', 'deleteApiAdminLibraryAuthorsByAuthorId', 'deleteApiAdminLibraryAuthorsByAuthorIdPortrait']) {
+      const entry = enhancedEntry(enhanced, key);
+      expect(entry, key).toContain('id: "LIST"');
+      expect(entry, key).not.toMatch(wholeType);
     }
+    expect(enhancedEntry(enhanced, 'postApiAdminLibraryAuthorsMerge')).toMatch(wholeType);
   }, 60_000);
 
   it('places two models with the same leaf name in different namespaces into separate files', async () => {
