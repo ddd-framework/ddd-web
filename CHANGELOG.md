@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.1
+
+The repository moved to the ddd-framework organisation: github.com/ddd-framework/ddd-web. No code changes; the npm
+package name stays `@mgamadeus/ddd-web`.
+
+### Changed
+- package.json `repository`, `bugs` and `homepage` point to github.com/ddd-framework/ddd-web.
+
 ## 0.3.0
 
 Cache invalidation by identity. Minor release because the default output changes: writes that invalidated their whole

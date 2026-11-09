@@ -1,6 +1,6 @@
 {
   "name": "@mgamadeus/ddd-web",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "TypeScript web client for backends built with mgamadeus/ddd, the DDD entity framework for Symfony and Doctrine (Composer/Packagist). Generates a typed RTK Query SDK from the backend's OpenAPI document, builds DDD QueryOptions (filters, orderBy, expand, select, paging) and handles JWT auth with token refresh.",
   "keywords": [
     "ddd",
@@ -16,13 +16,13 @@
     "query-options",
     "jwt"
   ],
-  "homepage": "https://github.com/mgamadeus/ddd-web#readme",
+  "homepage": "https://github.com/ddd-framework/ddd-web#readme",
   "bugs": {
-    "url": "https://github.com/mgamadeus/ddd-web/issues"
+    "url": "https://github.com/ddd-framework/ddd-web/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mgamadeus/ddd-web.git"
+    "url": "git+https://github.com/ddd-framework/ddd-web.git"
   },
   "license": "MIT",
   "author": "Marius-Eugen Gerdan <marius@gerdan.net>",

@@ -3,7 +3,7 @@ name: Release
 # Pushing a tag vX.Y.Z (the version in package.json) builds, verifies and PUBLISHES the package on npm via trusted
 # publishing (OIDC, no token) with provenance. Only this workflow file in this repository may publish.
 # npm side (once): a trusted publisher for this repository and workflow file (release.yml) with publish allowed,
-# e.g. `npm trust github @mgamadeus/ddd-web --repository mgamadeus/ddd-web --file release.yml --allow-publish`.
+# e.g. `npm trust github @mgamadeus/ddd-web --repository ddd-framework/ddd-web --file release.yml --allow-publish`.
 
 on:
   push:
