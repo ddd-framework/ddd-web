@@ -155,13 +155,13 @@ export function injectResponseHandlers(source: string, endpointKinds: ReadonlyMa
   return usesBlob ? `import { blobResponseHandler } from '${DDD_WEB_API_IMPORT}';\n${result}` : result;
 }
 
-function propertyName(ts: typeof TypeScript, name: TypeScript.PropertyName): string | undefined {
+export function propertyName(ts: typeof TypeScript, name: TypeScript.PropertyName): string | undefined {
   if (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNoSubstitutionTemplateLiteral(name)) return name.text;
   return undefined;
 }
 
 /** `build.query<…>(…)` or `build.mutation<…>(…)`. */
-function isBuildCall(ts: typeof TypeScript, node: TypeScript.Expression): node is TypeScript.CallExpression {
+export function isBuildCall(ts: typeof TypeScript, node: TypeScript.Expression): node is TypeScript.CallExpression {
   return (
     ts.isCallExpression(node) &&
     ts.isPropertyAccessExpression(node.expression) &&
@@ -170,7 +170,7 @@ function isBuildCall(ts: typeof TypeScript, node: TypeScript.Expression): node i
 }
 
 /** The object literal returned by the endpoint's `query` function, or the reason it could not be found. */
-function queryReturnObject(ts: typeof TypeScript, call: TypeScript.CallExpression): TypeScript.ObjectLiteralExpression | string {
+export function queryReturnObject(ts: typeof TypeScript, call: TypeScript.CallExpression): TypeScript.ObjectLiteralExpression | string {
   const definition = call.arguments[0];
   if (!definition || !ts.isObjectLiteralExpression(definition)) return 'endpoint definition is not an object literal';
   const query = definition.properties.find(

@@ -7,3 +7,8 @@ for (const subpath of subpaths) {
   }
   console.log(`ok @mgamadeus/ddd-web/${subpath}: ${Object.keys(module).join(', ')}`);
 }
+
+const api = await import('@mgamadeus/ddd-web/api');
+for (const name of ['createDddBaseQuery', 'buildDddMultipartBody', 'mergeDddTagTypes', 'isDddUploadAborted']) {
+  if (typeof api[name] !== 'function') throw new Error(`@mgamadeus/ddd-web/api lacks ${name}`);
+}

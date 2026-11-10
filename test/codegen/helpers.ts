@@ -30,7 +30,11 @@ function linkNodeModules(dir: string): void {
     JSON.stringify({ name: '@mgamadeus/ddd-web', type: 'module', exports: { './api': { types: './api.d.ts' } } }),
   );
   const source = path.join(packageRoot, 'src', 'api', 'download.js').replace(/\\/g, '/');
-  fs.writeFileSync(path.join(self, 'api.d.ts'), `export { blobResponseHandler } from '${source}';\nexport type { DddFileResponse } from '${source}';\n`);
+  const multipart = path.join(packageRoot, 'src', 'api', 'multipart.js').replace(/\\/g, '/');
+  fs.writeFileSync(
+    path.join(self, 'api.d.ts'),
+    `export { blobResponseHandler } from '${source}';\nexport type { DddFileResponse } from '${source}';\nexport { buildDddMultipartBody } from '${multipart}';\n`,
+  );
 }
 
 /** A throwaway consumer app: base api, tsconfig and the package's node_modules for type checking. */

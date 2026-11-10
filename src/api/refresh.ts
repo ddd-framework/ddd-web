@@ -22,6 +22,24 @@ export interface DddRefreshContext {
  */
 export type DddRefreshFn = (context: DddRefreshContext) => Promise<DddTokens | null>;
 
+/** Everything a re-login function needs. */
+export interface DddReloginContext {
+  /** Why the refresh could not recover the session. */
+  reason: 'no-refresh-token' | 'refresh-rejected';
+  /** The underlying fetch base query (no auth retry, Bearer of the current access token still applied). */
+  baseQuery: DddRawBaseQuery;
+  api: BaseQueryApi;
+  extraOptions: unknown;
+}
+
+/**
+ * Re-opens a session without a usable refresh token (guest credential, device id, impersonation through another
+ * session, …).
+ *
+ * @returns the new tokens (`refreshToken: null` for a session that has none), or `null` to end the session.
+ */
+export type DddReloginFn = (context: DddReloginContext) => Promise<DddTokens | null>;
+
 /**
  * The default {@link DddRefreshFn}: `POST <path>` with `{ refreshToken }`, expecting the DDD `AuthPostResponseDto`
  * `{ accessToken, refreshToken }`. DDD refresh tokens are stateless and re-issued with a renewed lifetime.

@@ -4,7 +4,7 @@
 
 1. Configuration (`openapi-config.ts`)
 2. Generating the SDK (`ddd-web-sdk`)
-3. Generated files and cache tags
+3. Generated files and cache tags (3a file downloads, 3b file uploads and upload progress)
 4. Query builders (`/query`)
 5. Base query, refresh and errors (`/api`)
 6. Tokens (`/auth`)
@@ -141,6 +141,25 @@ default is `[]`); api-entry resolver first, then the global one; an invalid resu
 `invalidation: broadInvalidation` restores the 0.2 output (every write without an `x-ddd-entity` path identity
 invalidates LIST + its whole tag type).
 
+**Typed tags in hand-written code.** Build the base api's `tagTypes` from the generated lists, then every
+`providesTags` / `invalidatesTags` of an own `injectEndpoints` file and every `baseApi.util.invalidateTags()` is checked
+against the generated names — a mistyped tag does not compile instead of silently invalidating nothing:
+
+```ts
+import { mergeDddTagTypes } from '@mgamadeus/ddd-web/api';
+import { adminApiTagTypes } from './adminApiTags';       // the Tags files import nothing: no import cycle
+import { clientApiTagTypes } from './clientApiTags';
+
+export const baseApi = createApi({
+  baseQuery: dddBaseQuery,
+  tagTypes: mergeDddTagTypes([...adminApiTagTypes, ...clientApiTagTypes], ['Session']),   // own tags second
+  endpoints: () => ({}),
+});
+```
+
+An own tag that differs from a generated one only by case (`ProspectActivities` next to the generated
+`Prospectactivities`) is a compile error. Never list generated tag names by hand.
+
 ## 3a. File downloads and text responses
 
 The response handler of each endpoint follows its 2xx content types:
@@ -171,6 +190,46 @@ A `Blob` is not serializable: Redux Toolkit's serializable check warns about it 
 (`serializableCheck: { ignoredActionPaths: ['payload.blob'], ignoredPaths: [/\.blob$/] }`) or keep the data out of
 the cache (`keepUnusedDataFor: 0` via `enhanceEndpoints`). Generated endpoints import the package's `api` entry, so the
 app needs `@reduxjs/toolkit` (the `api` peer) installed.
+
+## 3b. File uploads (multipart)
+
+An operation whose request body offers `multipart/form-data` (a request DTO with `Parameter::FILES` properties) gets a
+`multipartFiles` argument with one list per file field, and its body is built by `buildDddMultipartBody`:
+
+| Operation accepts | Generated argument | Request |
+|---|---|---|
+| JSON and multipart | the JSON DTO argument as before + optional `multipartFiles` | JSON while no file is given; with a file `multipart/form-data`: the JSON envelope in the form field `body`, each file as `<field>[]` |
+| multipart only | `multipartFiles` (required when the spec requires a file field) instead of RTK's body argument | always multipart |
+
+```ts
+const [send] = usePostApiClientChatMessagesMutation();
+await send({ chatMessageCreateRequestDto: { chatMessage: { body: 'see attachment' } }, multipartFiles: { attachmentFiles: [file] } }).unwrap();
+```
+
+A file part is a `File` / `Blob`, or React Native's `{ uri, name, type }`. Never set a `Content-Type` header for such a
+request. With `flattenArg` (the argument is the body itself) no files argument can be added: the generator warns and
+the endpoint stays JSON-only. `File` objects in a mutation argument are not serializable — RTK Query's own actions are
+exempt from the serializable check, do not copy them into other state.
+
+**Upload with progress.** `fetch` reports no upload progress, so the base query has an `upload()` that sends the same
+multipart form through `XMLHttpRequest` with the session of every other request (Bearer, `headers` / `languageCode`
+hooks, the shared refresh and one retry). Use it in a `queryFn`, so hooks, cache tags and error handling stay RTK's:
+
+```ts
+// dddBaseQuery = createDddBaseQuery({...}), exported next to baseApi
+uploadAttachment: build.mutation<AttachmentResponse, { itemId: number; file: File; onProgress?: (loaded: number, total: number) => void; signal?: AbortSignal }>({
+  queryFn: async ({ itemId, file, onProgress, signal }, api, extraOptions) =>
+    (await dddBaseQuery.upload(
+      { url: `/api/client/items/${itemId}/attachments`, body: { caption: file.name }, files: { attachmentFiles: [file] }, onProgress, signal },
+      api, extraOptions,
+    )) as { data: AttachmentResponse } | { error: FetchBaseQueryError },
+  invalidatesTags: (_result, _error, { itemId }) => [{ type: 'Items', id: itemId }],
+}),
+```
+
+`onProgress(loaded, total)` restarts from 0 when the upload is repeated after a refresh. A cancelled upload (`signal`)
+ends with an error for which `isDddUploadAborted(error)` is true; other errors have the base query's shape, so
+`normalizeDddError` reads them.
 
 ## 4. Query builders (`/query`)
 
@@ -226,6 +285,8 @@ DDD date-time otherwise.
 | `setTokens(tokens, api)` | store a refreshed pair |
 | `onLogout(api)` | once, when the session cannot be recovered |
 | `refreshPath` / `refresh` | default refresh = `POST refreshPath { refreshToken }` → `{ accessToken, refreshToken }`; or a custom `DddRefreshFn` |
+| `relogin(context)` | re-opens the session when the refresh cannot: `context.reason` is `'no-refresh-token'` (guest, device, impersonation sessions) or `'refresh-rejected'`; return the new tokens (`refreshToken: null` allowed) or `null` to log out |
+| `createUploadRequest()` | the request object of `upload()`; default `new XMLHttpRequest()` |
 | `shouldRefresh(error, request)` | default `defaultShouldRefresh`: status 401 and not an auth route (`…/common/auth/…`, `isDddAuthRequest`) |
 | `languageCode(context)` | value of the DDD `languageCode` header; `context.type` tells queries from mutations (e.g. editing language on writes, UI language on reads) |
 | `headers(headers, context)` | further headers after the Bearer header |
@@ -235,6 +296,21 @@ DDD date-time otherwise.
 Refresh behaviour: one refresh per session generation, shared by all requests that fail meanwhile; each failed request
 is retried once. A request that started before a finished refresh reuses its result; a late 401 after a failed refresh
 neither refreshes nor logs out again; a refresh that finishes after a logout or a new login is discarded.
+
+A session without refresh token (a guest with a stored credential, a device login, an impersonation renewed through
+another session) recovers through `relogin` — never store a placeholder refresh token to make the refresh run:
+
+```ts
+relogin: async ({ reason, baseQuery, api, extraOptions }) => {
+  const credential = readGuestCredential();
+  if (!credential) return null;                               // → onLogout
+  const result = await baseQuery({ url: '/api/public/common/auth/guest', method: 'POST', body: { credential } }, api, extraOptions as {});
+  const data = result.data as { accessToken?: string; refreshToken?: string | null } | undefined;
+  return data?.accessToken ? { accessToken: data.accessToken, refreshToken: data.refreshToken ?? null } : null;
+},
+```
+
+It runs inside the shared refresh, so concurrent failures trigger it once.
 
 ```ts
 // also refresh on 403, except business refusals
@@ -307,6 +383,10 @@ Idempotent; an existing symlink is repointed, a real file or directory is never 
 | `type check failed — previous output restored` | Fix the reported type error (often app code using a renamed hook), or `--skip-tsc` to inspect |
 | A list does not refresh after a write | `<stem>Enhanced.ts` not imported; or the write has no tag — see section 3 |
 | A screen shows stale data after a write that changes more than its own entity | Writes invalidate by identity since 0.3 — add an `invalidation` resolver for that endpoint (section 3), or `broadInvalidation` for the 0.2 behaviour |
+| A guest / device session logs out at the first 401 | It has no refresh token: pass `relogin` (section 5) |
+| `multipart body not generated (…flattenArg…)` | The endpoint's argument is the body itself; drop `flattenArg` for it or send the files with `upload()` |
+| An invalidation of a hand-written endpoint does nothing | Tag name in another case than the generated one: build `tagTypes` with `mergeDddTagTypes` (section 3) |
+| A route is not in the deployed spec yet | Point `schemaFile` (or `--schema`) at a local spec file or the local backend and regenerate; no hand-written stopgap endpoint |
 | Every request logs out after a 401 | `refreshPath` wrong, or the refresh response lacks `accessToken` |
 | Dates off by the zone offset | DDD date-times are UTC without offset: use `parseDddDateTime` |
 | 400 on a filter that looks right | Column kind / FULLTEXT / options: validate with `buildDefinedFilter` when `x-ddd-query` is available |

@@ -16,6 +16,7 @@ import { OutputFiles } from './files';
 import { formatFiles, typecheck } from './format';
 import { consoleLogger, SdkGenerationError, type Logger } from './log';
 import { extractModels } from './models';
+import { detectMultipartEndpoints, injectMultipartBodies, MULTIPART_IMPORT } from './multipart';
 import type { OpenApiDocument } from './openapi';
 import { indexOperations } from './operations';
 import { commitOutput } from './output';
@@ -157,9 +158,12 @@ export async function generateSdk(options: GenerateSdkOptions = {}): Promise<Gen
       const fileCount = [...handlerEndpoints.values()].filter((kind) => kind === 'blob').length;
       if (fileCount > 0) logger.info(`  ${fileCount} file download endpoint(s) (blobResponseHandler)`);
 
+      const multipart = injectMultipartBodies(rtk.code, detectMultipartEndpoints(doc, endpoints), logger);
+      if (multipart.injected.length > 0) logger.info(`  ${multipart.injected.length} multipart endpoint(s) (multipartFiles)`);
+
       const esm = api.config.esmExtensions === true;
       const apiSource = extractModels({
-        apiSource: rtk.code,
+        apiSource: multipart.source,
         apiFilePath: api.outputFile,
         modelsDir,
         registry,
@@ -169,7 +173,8 @@ export async function generateSdk(options: GenerateSdkOptions = {}): Promise<Gen
         responseKinds,
       });
       if (!write) continue;
-      files.set(api.outputFile, injectResponseHandlers(apiSource, handlerEndpoints));
+      const withHandlers = injectResponseHandlers(apiSource, handlerEndpoints);
+      files.set(api.outputFile, multipart.injected.length > 0 ? `${MULTIPART_IMPORT}\n${withHandlers}` : withHandlers);
 
       const withExtension = (specifier: string): string => (esm ? `${specifier}.js` : specifier);
       const enhanced = buildEnhancedEndpoints({

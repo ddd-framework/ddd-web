@@ -74,6 +74,38 @@ export default defineConfig({
 });
 ```
 
+### File uploads
+
+Operations with a `multipart/form-data` request body get a `multipartFiles` argument; with a file the request is sent
+as multipart (JSON envelope in the form field `body`), without one as JSON:
+
+```ts
+await send({ messageCreateRequestDto: { message: { body: 'see attachment' } }, multipartFiles: { attachmentFiles: [file] } }).unwrap();
+```
+
+For upload progress and cancel, `createDddBaseQuery(...)` returns a base query with `upload()` (XMLHttpRequest with the
+same Bearer, headers, refresh and retry) to call from a `queryFn`:
+
+```ts
+queryFn: ({ file, onProgress }, api, extraOptions) =>
+  dddBaseQuery.upload({ url: '/api/client/files', files: { files: [file] }, onProgress }, api, extraOptions),
+```
+
+### Sessions without refresh token
+
+`relogin` re-opens a guest, device or impersonation session when there is no refresh token or it was rejected:
+
+```ts
+createDddBaseQuery({ /* … */ relogin: async ({ reason, baseQuery, api, extraOptions }) => reopenGuestSession(baseQuery, api, extraOptions) });
+```
+
+### Typed cache tags
+
+```ts
+import { mergeDddTagTypes } from '@mgamadeus/ddd-web/api';
+tagTypes: mergeDddTagTypes([...adminApiTagTypes], ['Session']), // hand-written endpoints are checked against the generated names
+```
+
 ### Cache invalidation
 
 Each mutation invalidates the entity it writes plus the lists of its tag type (`{ type, id }` + `{ type, id: 'LIST' }`).

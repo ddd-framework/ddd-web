@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.4.0
+
+File uploads, sessions without refresh token and typed cache tags. Minor release: the generated arguments of multipart
+operations change.
+
+### Added
+- codegen: an operation with a `multipart/form-data` request body gets a `multipartFiles` argument (one list per file
+  field) and sends `buildDddMultipartBody(<json body>, multipartFiles)`: JSON while no file is given, else multipart
+  with the JSON envelope in the form field `body` and each file as `<field>[]`. Skipped with a warning for an
+  endpoint with `flattenArg`.
+- api: `buildDddMultipartBody`, `buildDddFormData`, `hasDddMultipartFiles`, types `DddMultipartFiles`, `DddFilePart`
+  (a `File` / `Blob` or React Native's `{ uri, name, type }`).
+- api: `createDddBaseQuery()` returns a base query with `upload(request, api, extraOptions)`: a multipart upload
+  through `XMLHttpRequest` with progress (`onProgress`) and cancel (`signal`, `isDddUploadAborted`), sharing Bearer,
+  the `headers` / `languageCode` hooks, the refresh and one retry. Option `createUploadRequest`.
+- api: option `relogin` — re-opens the session when no refresh token is stored or the refresh was rejected
+  (`DddReloginFn`, `DddReloginContext`). Without it the behaviour is unchanged.
+- api: `mergeDddTagTypes(generated, own)` for the base api's `tagTypes`; an own tag that differs from a generated one
+  only by case does not compile.
+
+### Changed
+- codegen: a multipart-only operation no longer has the body argument RTK codegen derived from the multipart schema
+  (it typed the files as a schema of the backend's upload class); pass `multipartFiles` instead.
+- A refresh for a session without refresh token is discarded when the access token changed while it ran.
+
+### Replaces hand-written code
+Search an app for these after the update and move them to the package:
+- `new FormData(` together with `injectEndpoints`, `fetch(` or `XMLHttpRequest` → `multipartFiles` / `upload()`;
+- a constant refresh token that only exists to make the refresh run (`getTokens` returning a marker) → `relogin`;
+- a `tagTypes:` list that repeats generated tag names → `mergeDddTagTypes`.
+
 ## 0.3.1
 
 The repository moved to the ddd-framework organisation: github.com/ddd-framework/ddd-web. No code changes; the npm

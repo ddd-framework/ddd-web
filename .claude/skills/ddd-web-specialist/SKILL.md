@@ -1,9 +1,9 @@
 ---
 name: ddd-web-specialist
-description: "Use and maintain @mgamadeus/ddd-web, the TS client of mgamadeus/ddd. Covers openapi-config.ts with defineConfig (schemaFile, apiFile, outputFile, modelsDir, skipUpdatePostTwins, sideEffects and responseHandlers overrides, invalidation resolver, baseApiImport, esmExtensions, workspace), the RTK Query SDK from ddd-web-sdk (--api, --schema, --skip-tsc; Enhanced/Tags files, cache tags by entity identity, file downloads via blobResponseHandler), QueryOptions builders (buildQueryOptions, combineFilters, buildInFilter, buildFulltextFilter), createDddBaseQuery (Bearer, shared refresh + retry, shouldRefresh, normalizeDddError), token storage, JWT helpers, contract types (x-ddd-*, DDD date-time, translations), link-skills, maintaining (pnpm, vitest, consumer check, trusted-publishing release, 0.x semver). Use when wiring a frontend to a DDD backend, regenerating the SDK, building filters, fixing token refresh, cache tags or refetch storms, downloading an Excel/ZIP/PDF export, or releasing ddd-web."
+description: "Use and maintain @mgamadeus/ddd-web, the TS client of mgamadeus/ddd. Covers openapi-config.ts with defineConfig (schemaFile URL or local file, sideEffects, responseHandlers, invalidation), the RTK Query SDK from ddd-web-sdk (Enhanced/Tags files, cache tags by entity identity, typed tagTypes via mergeDddTagTypes, file downloads via blobResponseHandler, file uploads: generated multipartFiles argument, buildDddMultipartBody, upload with progress via baseQuery.upload), QueryOptions builders (buildQueryOptions, combineFilters, buildInFilter), createDddBaseQuery (Bearer, shared refresh + retry, relogin for guest or device sessions without refresh token, shouldRefresh, normalizeDddError), token storage, JWT helpers, contract types, link-skills, release. Use when wiring a frontend to a DDD backend, regenerating the SDK, building filters, uploading files, multipart, FormData, upload progress, fixing token refresh, guest login, cache tags that invalidate nothing, downloading an export, or releasing ddd-web."
 metadata:
   author: mgamadeus
-  version: "1.2.0"
+  version: "1.3.0"
   package: "@mgamadeus/ddd-web"
 ---
 
@@ -21,7 +21,7 @@ frontend code. No UI components, no domain logic — apps bring their own design
 |---|---|---|
 | `@mgamadeus/ddd-web/codegen` | Node only (never in a browser bundle) | `defineConfig`, `generateSdk`, `linkSkills`, `loadSpec` / `validateSpec`; bins `ddd-web-sdk`, `ddd-web` |
 | `@mgamadeus/ddd-web/query` | anywhere, no React | QueryOptions builders and definition-driven validators |
-| `@mgamadeus/ddd-web/api` | needs `@reduxjs/toolkit` 2 (peer) | `createDddBaseQuery`, `createDddRefresh`, `normalizeDddError`, downloads, `createAuthEndpoints` |
+| `@mgamadeus/ddd-web/api` | needs `@reduxjs/toolkit` 2 (peer) | `createDddBaseQuery` (+ `upload()`, `relogin`), `createDddRefresh`, `normalizeDddError`, downloads, multipart (`buildDddMultipartBody`), `mergeDddTagTypes`, `createAuthEndpoints` |
 | `@mgamadeus/ddd-web/auth` | anywhere | `TokenStorage` adapters, `decodeJwt`, `isExpired`, SSR-safe storage |
 | `@mgamadeus/ddd-web/contract` | types + small helpers | `x-ddd-*` types, error body, DDD date-time, translations, operators |
 
@@ -92,6 +92,14 @@ const { data } = useGetApiAdminLibraryBooksListQuery({
   `DddFileResponse`: `const { blob, filename } = await trigger(args).unwrap(); downloadBlob(blob, filename ?? 'x.xlsx')`.
   When the spec declares JSON for such a route, add a `responseHandlers` override (`handler: 'blob'`) — never
   hand-write a stopgap endpoint.
+- **File uploads** go through the generated `multipartFiles` argument (operations with a multipart request body); for
+  progress or cancel use `dddBaseQuery.upload()` in a `queryFn`. Never hand-write `new FormData()` with an own
+  `fetch` / `XMLHttpRequest` and an own token: it bypasses the session, the refresh and the headers hooks.
+- **Sessions without refresh token** (guest, device, impersonation) recover through the `relogin` option — never a
+  placeholder refresh token.
+- **Tag names come from the generated `<stem>Tags.ts`**: build `tagTypes` with `mergeDddTagTypes`, never retype a tag.
+- **A route missing from the deployed spec** is generated from a local spec file or local backend (`schemaFile`,
+  `--schema`), not injected by hand.
 - **Never build filter strings by concatenation** — use the `query` builders; they escape strings, write lists as JSON
   and group `or` clauses (the backend parser has no precedence).
 - **One refresh policy:** pass `shouldRefresh` instead of wrapping the base query; auth endpoints never refresh.

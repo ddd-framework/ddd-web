@@ -9,7 +9,8 @@ import {
 } from '@reduxjs/toolkit/query';
 import type { DddTokens } from '../auth/types';
 import { applyDebugParams, readDebugFlags, type DddDebugOptions } from './debug';
-import { createDddRefresh, type DddRawBaseQuery, type DddRefreshFn } from './refresh';
+import { buildDddFormData, type DddMultipartFiles } from './multipart';
+import { createDddRefresh, type DddRawBaseQuery, type DddRefreshFn, type DddReloginFn } from './refresh';
 
 type MaybePromise<T> = T | Promise<T>;
 
@@ -25,8 +26,53 @@ export type DddHeadersContext = Parameters<NonNullable<FetchBaseQueryArgs['prepa
 /** Decides whether a failed request is worth a token refresh and one retry. */
 export type DddShouldRefresh = (error: FetchBaseQueryError, request: FetchArgs) => boolean;
 
-/** The base query returned by {@link createDddBaseQuery}. */
+/** The base query type of a DDD api (what {@link createAuthEndpoints} and wrappers accept). */
 export type DddBaseQuery = BaseQueryFn<string | FetchArgs, unknown, FetchBaseQueryError, {}, FetchBaseQueryMeta>;
+
+/** One upload sent by {@link DddUploadingBaseQuery.upload}. */
+export interface DddUploadRequest {
+  /** Path relative to the base URL. */
+  url: string;
+  /** Default `POST`. */
+  method?: string;
+  /** JSON envelope, sent in the form field `body`; left out when `undefined`. */
+  body?: unknown;
+  /** File parts per form field (the `Parameter::FILES` properties of the request DTO). */
+  files: DddMultipartFiles;
+  /** Query parameters; `null` / `undefined` values are skipped. */
+  params?: Record<string, unknown>;
+  /** Bytes of the request body sent so far. Called again from 0 when the upload is repeated after a refresh. */
+  onProgress?: (loaded: number, total: number) => void;
+  /** Aborting cancels the request; the result is then the error of {@link isDddUploadAborted}. */
+  signal?: AbortSignal;
+}
+
+/** Result of an upload: the shape an RTK `queryFn` returns. */
+export type DddUploadResult = { data: unknown; error?: undefined } | { data?: undefined; error: FetchBaseQueryError };
+
+/** The base query returned by {@link createDddBaseQuery}: a {@link DddBaseQuery} that can also upload with progress. */
+export type DddUploadingBaseQuery = DddBaseQuery & {
+  /**
+   * Sends a multipart upload with progress (XMLHttpRequest: `fetch` reports no upload progress) through the same
+   * session as every request: Bearer, `headers` / `languageCode` hooks, one shared refresh and one retry.
+   *
+   * @example
+   * uploadAttachment: build.mutation<AttachmentResponse, { id: number; file: File; onProgress?: (loaded: number, total: number) => void }>({
+   *   queryFn: ({ id, file, onProgress }, api, extraOptions) =>
+   *     dddBaseQuery.upload({ url: `/api/client/items/${id}/attachments`, files: { attachmentFiles: [file] }, onProgress }, api, extraOptions) as
+   *       Promise<{ data: AttachmentResponse } | { error: FetchBaseQueryError }>,
+   * }),
+   */
+  upload: (request: DddUploadRequest, api: BaseQueryApi, extraOptions?: unknown) => Promise<DddUploadResult>;
+};
+
+/** `error.error` of an upload cancelled through its `signal`. */
+export const DDD_UPLOAD_ABORTED = 'DDD_UPLOAD_ABORTED';
+
+/** True for the error of an upload that was cancelled through its `signal`. */
+export const isDddUploadAborted = (error: unknown): boolean =>
+  !!error && typeof error === 'object' && (error as { status?: unknown; error?: unknown }).status === 'CUSTOM_ERROR' &&
+  (error as { error?: unknown }).error === DDD_UPLOAD_ABORTED;
 
 /** Options of {@link createDddBaseQuery}. */
 export interface DddBaseQueryOptions {
@@ -42,6 +88,24 @@ export interface DddBaseQueryOptions {
   refresh?: DddRefreshFn;
   /** Refresh endpoint for the default refresh, e.g. `/api/admin/common/auth/refresh`. Required without `refresh`. */
   refreshPath?: string;
+  /**
+   * Re-opens the session when the refresh cannot: no refresh token is stored (guest, impersonation or device
+   * sessions), or the refresh token was rejected. Return the new tokens, or `null` to end the session (`onLogout`).
+   * Without it a refresh-worthy failure without refresh token logs out directly.
+   *
+   * @example
+   * // A guest session is re-opened from its stored credential:
+   * relogin: async ({ baseQuery, api, extraOptions }) => {
+   *   const credential = readGuestCredential();
+   *   if (!credential) return null;
+   *   const result = await baseQuery({ url: '/api/public/common/auth/guest', method: 'POST', body: { credential } }, api, extraOptions as {});
+   *   const data = result.data as { accessToken?: string; refreshToken?: string | null } | undefined;
+   *   return data?.accessToken ? { accessToken: data.accessToken, refreshToken: data.refreshToken ?? null } : null;
+   * },
+   */
+  relogin?: DddReloginFn;
+  /** Creates the request object of an upload. Default `new XMLHttpRequest()`. */
+  createUploadRequest?: () => XMLHttpRequest;
   /**
    * Adds or changes headers after the Bearer header is set; return value as in RTK's `prepareHeaders`.
    * `context.type` tells reads (`query`) from writes (`mutation`).
@@ -109,7 +173,8 @@ const withBearer = (args: FetchArgs, accessToken: string | null | undefined): Fe
  * - On a refresh-worthy failure (`shouldRefresh`, default 401) runs ONE shared refresh and retries the request exactly
  *   once. Concurrent failures share that refresh and its result; a request whose failure predates a refresh that
  *   finished meanwhile reuses that refresh's result instead of refreshing again.
- * - No refresh token, or a rejected refresh → `onLogout()` once for that session and the original error is returned.
+ * - No refresh token, or a rejected refresh → `relogin()` when given; without it, or when it returns `null`,
+ *   `onLogout()` once for that session and the original error is returned.
  * - A refresh whose session was logged out or replaced while it ran is discarded (no `setTokens`, no retry).
  *
  * @example
@@ -124,8 +189,8 @@ const withBearer = (args: FetchArgs, accessToken: string | null | undefined): Fe
  *   endpoints: () => ({}),
  * });
  */
-export function createDddBaseQuery(options: DddBaseQueryOptions): DddBaseQuery {
-  const { getTokens, setTokens, onLogout, headers: headersHook, languageCode, fetchOptions } = options;
+export function createDddBaseQuery(options: DddBaseQueryOptions): DddUploadingBaseQuery {
+  const { getTokens, setTokens, onLogout, headers: headersHook, languageCode, fetchOptions, relogin } = options;
   const shouldRefresh = options.shouldRefresh ?? defaultShouldRefresh;
   if (!options.refresh && !options.refreshPath) {
     throw new Error('createDddBaseQuery: pass either `refresh` or `refreshPath`.');
@@ -168,11 +233,24 @@ export function createDddBaseQuery(options: DddBaseQueryOptions): DddBaseQuery {
     (await getTokens(api))?.accessToken ?? null;
 
   const runRefresh = async (api: BaseQueryApi, extraOptions: unknown): Promise<RefreshOutcome> => {
-    const refreshToken = (await getTokens(api))?.refreshToken ?? null;
-    const pair = refreshToken ? await refresh({ refreshToken, baseQuery: rawBaseQuery, api, extraOptions }) : null;
+    const before = await getTokens(api);
+    const refreshToken = before?.refreshToken ?? null;
+    const accessTokenBefore = before?.accessToken ?? null;
+    let pair = refreshToken ? await refresh({ refreshToken, baseQuery: rawBaseQuery, api, extraOptions }) : null;
+    if (!pair?.accessToken && relogin) {
+      pair = await relogin({
+        reason: refreshToken ? 'refresh-rejected' : 'no-refresh-token',
+        baseQuery: rawBaseQuery,
+        api,
+        extraOptions,
+      });
+    }
     // The session may have ended (logout) or changed (another login) while the refresh ran: its result belongs to
     // a session that is gone and must not be stored.
-    if (((await getTokens(api))?.refreshToken ?? null) !== refreshToken) return 'superseded';
+    const after = await getTokens(api);
+    if ((after?.refreshToken ?? null) !== refreshToken) return 'superseded';
+    // A session without refresh token is identified by its access token.
+    if (refreshToken === null && (after?.accessToken ?? null) !== accessTokenBefore) return 'superseded';
     if (!pair?.accessToken) {
       await onLogout(api);
       return 'failed';
@@ -200,7 +278,7 @@ export function createDddBaseQuery(options: DddBaseQueryOptions): DddBaseQuery {
     return lastOutcome;
   };
 
-  return async (args, api, extraOptions) => {
+  const baseQuery: DddBaseQuery = async (args, api, extraOptions) => {
     // A request started during a refresh waits for it and then sends the current token.
     while (inflight) await inflight.catch(() => undefined);
     const startGeneration = generation;
@@ -210,4 +288,74 @@ export function createDddBaseQuery(options: DddBaseQueryOptions): DddBaseQuery {
     if ((await recover(startGeneration, api, extraOptions)) !== 'refreshed') return result;
     return rawBaseQuery(withBearer(request, await currentAccessToken(api)), api, extraOptions);
   };
+
+  /** Headers of an upload: Bearer, then the same hooks as a fetch request. No content type: the runtime sets it. */
+  const uploadHeaders = async (request: DddUploadRequest, api: BaseQueryApi, extraOptions: unknown): Promise<Headers> => {
+    const headers = new Headers();
+    const accessToken = await currentAccessToken(api);
+    if (accessToken) headers.set('authorization', `Bearer ${accessToken}`);
+    const context = {
+      getState: api.getState,
+      extra: api.extra,
+      endpoint: api.endpoint,
+      type: api.type,
+      forced: api.forced,
+      arg: { url: request.url, method: request.method ?? 'POST' },
+      extraOptions,
+    } as DddHeadersContext;
+    const language = languageCode?.(context);
+    if (language) headers.set('languageCode', language);
+    if (debugOptions && readDebugFlags(debugOptions).debug) headers.set('x-debug', 'true');
+    return (await headersHook?.(headers, context)) ?? headers;
+  };
+
+  const sendUpload = async (request: DddUploadRequest, api: BaseQueryApi, extraOptions: unknown): Promise<DddUploadResult> => {
+    const headers = await uploadHeaders(request, api, extraOptions);
+    const query = request.params ? dddParamsSerializer(request.params) : '';
+    const url = `${options.baseUrl.replace(/\/+$/, '')}/${request.url.replace(/^\/+/, '')}${query ? `${request.url.includes('?') ? '&' : '?'}${query}` : ''}`;
+    return new Promise<DddUploadResult>((resolve) => {
+      const { signal, onProgress } = request;
+      const aborted: DddUploadResult = { error: { status: 'CUSTOM_ERROR', error: DDD_UPLOAD_ABORTED } };
+      if (signal?.aborted) return resolve(aborted);
+      const xhr = options.createUploadRequest ? options.createUploadRequest() : new XMLHttpRequest();
+      const onAbort = (): void => xhr.abort();
+      signal?.addEventListener('abort', onAbort, { once: true });
+      const finish = (result: DddUploadResult): void => {
+        signal?.removeEventListener('abort', onAbort);
+        resolve(result);
+      };
+      xhr.open(request.method ?? 'POST', url);
+      headers.forEach((value, name) => xhr.setRequestHeader(name, value));
+      if (onProgress && xhr.upload) {
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable) onProgress(event.loaded, event.total);
+        };
+      }
+      xhr.onload = () => {
+        const text = xhr.responseText;
+        let data: unknown;
+        try {
+          data = text ? JSON.parse(text) : undefined;
+        } catch {
+          data = text;
+        }
+        if (xhr.status >= 200 && xhr.status < 300) finish({ data: data ?? null });
+        else finish({ error: { status: xhr.status, data } });
+      };
+      xhr.onerror = () => finish({ error: { status: 'FETCH_ERROR', error: 'The upload did not reach the server.' } });
+      xhr.onabort = () => finish(aborted);
+      xhr.send(buildDddFormData(request.body, request.files));
+    });
+  };
+
+  const upload: DddUploadingBaseQuery['upload'] = async (request, api, extraOptions) => {
+    while (inflight) await inflight.catch(() => undefined);
+    const startGeneration = generation;
+    const result = await sendUpload(request, api, extraOptions);
+    if (!result.error || !shouldRefresh(result.error, { url: request.url, method: request.method ?? 'POST' })) return result;
+    if ((await recover(startGeneration, api, extraOptions)) !== 'refreshed') return result;
+    return sendUpload(request, api, extraOptions);
+  };
+
+  return Object.assign(baseQuery, { upload });
 }

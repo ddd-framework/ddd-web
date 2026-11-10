@@ -1,6 +1,6 @@
 import type { FetchBaseQueryError } from '@reduxjs/toolkit/query';
 import { describe, expect, it, vi } from 'vitest';
-import { createDddBaseQuery, type DddBaseQueryOptions } from '../../src/api';
+import { createDddBaseQuery, type DddBaseQueryOptions, type DddReloginContext } from '../../src/api';
 import type { DddTokens } from '../../src/auth';
 import { json, makeApi } from './helpers';
 
@@ -288,5 +288,48 @@ describe('createDddBaseQuery', () => {
     const { baseQuery, requests } = setup();
     await baseQuery('/a?x=1', makeApi(), {});
     expect(new URL(requests[0]!.url).search).toBe('?x=1');
+  });
+});
+
+describe('relogin', () => {
+  it('re-opens a session that has no refresh token', async () => {
+    const relogin = vi.fn(async (_context: DddReloginContext) => ({ accessToken: 'new', refreshToken: null }));
+    const { baseQuery, tokens, onLogout, refreshCalls } = setup({ relogin });
+    tokens.refreshToken = null;
+    const result = await baseQuery('/api/items', makeApi(), {});
+    expect(result.data).toEqual({ ok: true, path: '/api/items' });
+    expect(relogin).toHaveBeenCalledTimes(1);
+    expect(relogin.mock.calls[0]![0].reason).toBe('no-refresh-token');
+    expect(refreshCalls()).toBe(0);
+    expect(onLogout).not.toHaveBeenCalled();
+    expect(tokens).toEqual({ accessToken: 'new', refreshToken: null });
+  });
+
+  it('runs after a rejected refresh', async () => {
+    const relogin = vi.fn(async (_context: DddReloginContext) => ({ accessToken: 'new', refreshToken: 'r9' }));
+    const { baseQuery, tokens, onLogout, refreshCalls } = setup({ relogin }, { refreshStatus: 401 });
+    const result = await baseQuery('/api/items', makeApi(), {});
+    expect(result.data).toEqual({ ok: true, path: '/api/items' });
+    expect(refreshCalls()).toBe(1);
+    expect(relogin.mock.calls[0]![0].reason).toBe('refresh-rejected');
+    expect(onLogout).not.toHaveBeenCalled();
+    expect(tokens.refreshToken).toBe('r9');
+  });
+
+  it('logs out when the re-login gives up, and shares one attempt between concurrent failures', async () => {
+    const relogin = vi.fn(async () => null);
+    const { baseQuery, tokens, onLogout } = setup({ relogin });
+    tokens.refreshToken = null;
+    const results = await Promise.all([baseQuery('/api/a', makeApi(), {}), baseQuery('/api/b', makeApi(), {})]);
+    expect(results.every((result) => (result.error as FetchBaseQueryError).status === 401)).toBe(true);
+    expect(relogin).toHaveBeenCalledTimes(1);
+    expect(onLogout).toHaveBeenCalledTimes(1);
+  });
+
+  it('without relogin a missing refresh token still logs out directly', async () => {
+    const { baseQuery, tokens, onLogout } = setup();
+    tokens.refreshToken = null;
+    await baseQuery('/api/items', makeApi(), {});
+    expect(onLogout).toHaveBeenCalledTimes(1);
   });
 });
