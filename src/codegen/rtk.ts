@@ -101,6 +101,9 @@ export async function runRtkCodegen(
   };
 
   const options = {
+    // A path parameter is one URL segment: a value with `/`, `?`, `#` or a space must not change the route.
+    // `encodePathParams: false` in the api config switches it off for callers that encode themselves.
+    encodePathParams: true,
     ...passthrough,
     schemaFile: specFile,
     apiFile: relativeImport(api.outputDir, api.apiFile),

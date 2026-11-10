@@ -35,6 +35,7 @@ too). A plain RTK-codegen file with `export const apis = [...]` is accepted as w
 | `responseHandlers` | Overrides checked before the global ones (first match wins). |
 | `invalidation` | Resolver checked before the global one (see section 3). |
 | `esmExtensions` | `true` for `moduleResolution: nodenext`: generated relative imports end in `.js`. |
+| `encodePathParams` | Default `true`: a path parameter is passed through `encodeURIComponent` in the generated URL — callers pass the raw value and never encode it themselves (it would be encoded twice). `false` restores the plain interpolation. |
 | any other key | Passed to RTK codegen (`argSuffix`, `flattenArg`, `endpointOverrides`, `filterEndpoints`, …). |
 
 **Global options:**

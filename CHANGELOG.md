@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.0
+
+### Changed
+- codegen: path parameters are encoded in the generated URL (`encodeURIComponent(String(queryArg.x))`); the api
+  config option `encodePathParams` now defaults to `true`. A value with `/`, `?`, `#` or a space no longer changes
+  the route. **After regenerating, remove your own `encodeURIComponent()` around path arguments** — the value would
+  be encoded twice — or set `encodePathParams: false` for that api to keep the previous output.
+
 ## 0.5.0
 
 Requests can be bound to the session they were prepared for. Additive: without `getSessionKey` nothing changes.

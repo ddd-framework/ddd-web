@@ -48,6 +48,25 @@ describe('codegen regressions', () => {
     expect(read(app, 'src/api/adminApi.ts')).toMatch(/postApiAdminLibraryBooksSearch: build\.mutation</);
   }, 60_000);
 
+  it('encodes path parameters by default and leaves them alone with encodePathParams: false', async () => {
+    const app = newApp();
+    await generateSdk({ cwd: app, config: { apis: [apiEntry(SAMPLE_SPEC)] }, logger: silentLogger, skipTsc: true });
+    const encoded = read(app, 'src/api/adminApi.ts');
+    expect(encoded).toContain('encodeURIComponent(String(queryArg.bookId))');
+    expect(encoded).not.toMatch(/\$\{queryArg\.bookId\}/);
+
+    const plainApp = newApp();
+    await generateSdk({
+      cwd: plainApp,
+      config: { apis: [apiEntry(SAMPLE_SPEC, { encodePathParams: false })] },
+      logger: silentLogger,
+      skipTsc: true,
+    });
+    const plain = read(plainApp, 'src/api/adminApi.ts');
+    expect(plain).toMatch(/\$\{queryArg\.bookId\}/);
+    expect(plain).not.toContain('encodeURIComponent(String(queryArg.bookId))');
+  }, 60_000);
+
   for (const [option, accessor] of [
     ['encodePathParams', 'arg.bookId'],
     ['flattenArg', 'arg'],
@@ -65,7 +84,7 @@ describe('codegen regressions', () => {
         }
       }
       await generateSdk({ cwd: app, config: { apis: [apiEntry(writeSpec(app, doc), { [option]: true })] }, logger: silentLogger });
-      if (option === 'flattenArg') expect(read(app, 'src/api/adminApi.ts')).toMatch(/\$\{queryArg\}/);
+      if (option === 'flattenArg') expect(read(app, 'src/api/adminApi.ts')).toContain('${encodeURIComponent(String(queryArg))}');
       else expect(read(app, 'src/api/adminApi.ts')).toContain('encodeURIComponent(String(queryArg.bookId))');
       const enhanced = read(app, 'src/api/adminApiEnhanced.ts');
       expect(enhancedEntry(enhanced, 'getApiAdminLibraryBooksByBookId')).toContain(`id: ${accessor} }`);
