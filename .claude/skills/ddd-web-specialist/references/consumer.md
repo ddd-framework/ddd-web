@@ -286,6 +286,7 @@ DDD date-time otherwise.
 | `onLogout(api)` | once, when the session cannot be recovered |
 | `refreshPath` / `refresh` | default refresh = `POST refreshPath { refreshToken }` → `{ accessToken, refreshToken }`; or a custom `DddRefreshFn` |
 | `relogin(context)` | re-opens the session when the refresh cannot: `context.reason` is `'no-refresh-token'` (guest, device, impersonation sessions) or `'refresh-rejected'`; return the new tokens (`refreshToken: null` allowed) or `null` to log out |
+| `getSessionKey(context)` | key of the current session that survives a token refresh (account id, or a counter raised on login and logout; `null` without a session); needed to bind requests to a session, see below |
 | `createUploadRequest()` | the request object of `upload()`; default `new XMLHttpRequest()` |
 | `shouldRefresh(error, request)` | default `defaultShouldRefresh`: status 401 and not an auth route (`…/common/auth/…`, `isDddAuthRequest`) |
 | `languageCode(context)` | value of the DDD `languageCode` header; `context.type` tells queries from mutations (e.g. editing language on writes, UI language on reads) |
@@ -309,6 +310,36 @@ relogin: async ({ reason, baseQuery, api, extraOptions }) => {
   return data?.accessToken ? { accessToken: data.accessToken, refreshToken: data.refreshToken ?? null } : null;
 },
 ```
+
+**Requests bound to a session.** The Bearer token is read when a request is sent: after the wait for a running
+refresh, and again for the retry. A request prepared for account A (an offline queue, an upload, an import) can
+therefore leave with the token of account B when the user switched in between; a check before `dispatch()` does not
+cover that. Give the base query a `getSessionKey` and bind such requests: a bound request is sent, and retried, only
+while its session is the current one. Otherwise it ends with `{ error: { status: 'CUSTOM_ERROR', error:
+'DDD_SESSION_CHANGED' } }` (`isDddSessionChanged(error)`) without a network call, a refresh or a logout. Requests that
+are not bound behave as before.
+
+```ts
+createDddBaseQuery({ /* … */ getSessionKey: ({ getState }) => (getState() as RootState).auth.accountId });
+
+// The session the caller prepared the request for (strictest form): the key is part of the endpoint's argument.
+saveDraft: build.mutation<void, { accountId: number; draft: Draft }>({
+  query: ({ accountId, draft }) =>
+    withDddExpectedSessionKey({ url: '/api/client/drafts', method: 'POST', body: { draft } }, accountId),
+}),
+
+// An upload:
+dddBaseQuery.upload({ url, files, expectedSessionKey: accountId }, api, extraOptions);
+
+// The session that is current when the request starts (also for generated endpoints, through enhanceEndpoints):
+api.enhanceEndpoints({ endpoints: { postClientDrafts: { extraOptions: { bindToSession: true } } } });
+```
+
+- The key must survive a token refresh: an account id or an app-side counter, never the access token (a refresh of
+  the same session would block the retry).
+- `withDddExpectedSessionKey` carries the key in the header `x-ddd-expected-session-key`; the base query removes it
+  before sending. A `queryFn` can pass `{ expectedSessionKey }` as `extraOptions` instead.
+- Treat `DDD_SESSION_CHANGED` like "not sent": a queued item stays queued for its own account.
 
 It runs inside the shared refresh, so concurrent failures trigger it once.
 
@@ -383,6 +414,8 @@ Idempotent; an existing symlink is repointed, a real file or directory is never 
 | `type check failed — previous output restored` | Fix the reported type error (often app code using a renamed hook), or `--skip-tsc` to inspect |
 | A list does not refresh after a write | `<stem>Enhanced.ts` not imported; or the write has no tag — see section 3 |
 | A screen shows stale data after a write that changes more than its own entity | Writes invalidate by identity since 0.3 — add an `invalidation` resolver for that endpoint (section 3), or `broadInvalidation` for the 0.2 behaviour |
+| After an account switch a queued request was stored under the new account | Bind it to its session: `getSessionKey` + `withDddExpectedSessionKey` (section 5) |
+| `a request is bound to a session, pass getSessionKey` | The base query has no `getSessionKey` option |
 | A guest / device session logs out at the first 401 | It has no refresh token: pass `relogin` (section 5) |
 | `multipart body not generated (…flattenArg…)` | The endpoint's argument is the body itself; drop `flattenArg` for it or send the files with `upload()` |
 | An invalidation of a hand-written endpoint does nothing | Tag name in another case than the generated one: build `tagTypes` with `mergeDddTagTypes` (section 3) |

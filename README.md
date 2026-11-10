@@ -99,6 +99,21 @@ queryFn: ({ file, onProgress }, api, extraOptions) =>
 createDddBaseQuery({ /* … */ relogin: async ({ reason, baseQuery, api, extraOptions }) => reopenGuestSession(baseQuery, api, extraOptions) });
 ```
 
+### Requests bound to a session
+
+A request prepared for one account must not leave with another account's token after an account switch (the token is
+read when the request is sent, after a running refresh, and again for the retry):
+
+```ts
+createDddBaseQuery({ /* … */ getSessionKey: ({ getState }) => (getState() as RootState).auth.accountId });
+
+query: ({ accountId, draft }) => withDddExpectedSessionKey({ url: '/api/client/drafts', method: 'POST', body: { draft } }, accountId),
+```
+
+A bound request whose session is no longer the current one is not sent: `isDddSessionChanged(result.error)`. Uploads
+take `expectedSessionKey`; `extraOptions: { bindToSession: true }` binds an endpoint's requests to the session they
+start in.
+
 ### Typed cache tags
 
 ```ts

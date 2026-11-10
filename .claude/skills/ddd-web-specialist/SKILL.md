@@ -1,9 +1,9 @@
 ---
 name: ddd-web-specialist
-description: "Use and maintain @mgamadeus/ddd-web, the TS client of mgamadeus/ddd. Covers openapi-config.ts with defineConfig (schemaFile URL or local file, sideEffects, responseHandlers, invalidation), the RTK Query SDK from ddd-web-sdk (Enhanced/Tags files, cache tags by entity identity, typed tagTypes via mergeDddTagTypes, file downloads via blobResponseHandler, file uploads: generated multipartFiles argument, buildDddMultipartBody, upload with progress via baseQuery.upload), QueryOptions builders (buildQueryOptions, combineFilters, buildInFilter), createDddBaseQuery (Bearer, shared refresh + retry, relogin for guest or device sessions without refresh token, shouldRefresh, normalizeDddError), token storage, JWT helpers, contract types, link-skills, release. Use when wiring a frontend to a DDD backend, regenerating the SDK, building filters, uploading files, multipart, FormData, upload progress, fixing token refresh, guest login, cache tags that invalidate nothing, downloading an export, or releasing ddd-web."
+description: "Use and maintain @mgamadeus/ddd-web, the TS client of mgamadeus/ddd: openapi-config.ts with defineConfig (schemaFile, sideEffects, responseHandlers, invalidation), the RTK Query SDK from ddd-web-sdk (Enhanced/Tags files, cache tags by entity identity, typed tagTypes via mergeDddTagTypes, downloads via blobResponseHandler, file uploads: multipartFiles argument, buildDddMultipartBody, upload with progress via baseQuery.upload), QueryOptions builders (buildQueryOptions, combineFilters, buildInFilter), createDddBaseQuery (Bearer, shared refresh + retry, relogin for sessions without refresh token, session-bound requests via getSessionKey, shouldRefresh, normalizeDddError), token storage, JWT helpers, link-skills, release. Use when wiring a frontend to a DDD backend, regenerating the SDK, building filters, uploading files, FormData, upload progress, fixing token refresh, guest login, a request sent under the wrong account after an account switch, stale cache tags, downloading an export, or releasing ddd-web."
 metadata:
   author: mgamadeus
-  version: "1.3.0"
+  version: "1.4.0"
   package: "@mgamadeus/ddd-web"
 ---
 
@@ -21,7 +21,7 @@ frontend code. No UI components, no domain logic — apps bring their own design
 |---|---|---|
 | `@mgamadeus/ddd-web/codegen` | Node only (never in a browser bundle) | `defineConfig`, `generateSdk`, `linkSkills`, `loadSpec` / `validateSpec`; bins `ddd-web-sdk`, `ddd-web` |
 | `@mgamadeus/ddd-web/query` | anywhere, no React | QueryOptions builders and definition-driven validators |
-| `@mgamadeus/ddd-web/api` | needs `@reduxjs/toolkit` 2 (peer) | `createDddBaseQuery` (+ `upload()`, `relogin`), `createDddRefresh`, `normalizeDddError`, downloads, multipart (`buildDddMultipartBody`), `mergeDddTagTypes`, `createAuthEndpoints` |
+| `@mgamadeus/ddd-web/api` | needs `@reduxjs/toolkit` 2 (peer) | `createDddBaseQuery` (+ `upload()`, `relogin`, `getSessionKey`), `createDddRefresh`, `normalizeDddError`, downloads, multipart (`buildDddMultipartBody`), `mergeDddTagTypes`, `createAuthEndpoints` |
 | `@mgamadeus/ddd-web/auth` | anywhere | `TokenStorage` adapters, `decodeJwt`, `isExpired`, SSR-safe storage |
 | `@mgamadeus/ddd-web/contract` | types + small helpers | `x-ddd-*` types, error body, DDD date-time, translations, operators |
 
@@ -97,6 +97,9 @@ const { data } = useGetApiAdminLibraryBooksListQuery({
   `fetch` / `XMLHttpRequest` and an own token: it bypasses the session, the refresh and the headers hooks.
 - **Sessions without refresh token** (guest, device, impersonation) recover through the `relogin` option — never a
   placeholder refresh token.
+- **A request whose body belongs to one account is bound to that session**: `getSessionKey` on the base query and
+  `withDddExpectedSessionKey` (or `expectedSessionKey` of an upload). A check before `dispatch()` does not cover the
+  wait for a running refresh or the retry after it.
 - **Tag names come from the generated `<stem>Tags.ts`**: build `tagTypes` with `mergeDddTagTypes`, never retype a tag.
 - **A route missing from the deployed spec** is generated from a local spec file or local backend (`schemaFile`,
   `--schema`), not injected by hand.

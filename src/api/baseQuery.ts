@@ -45,6 +45,11 @@ export interface DddUploadRequest {
   onProgress?: (loaded: number, total: number) => void;
   /** Aborting cancels the request; the result is then the error of {@link isDddUploadAborted}. */
   signal?: AbortSignal;
+  /**
+   * Session this upload belongs to (see {@link DddBaseQueryOptions.getSessionKey}): it is only sent, and only
+   * repeated after a refresh, while that session is the current one.
+   */
+  expectedSessionKey?: string | number;
 }
 
 /** Result of an upload: the shape an RTK `queryFn` returns. */
@@ -74,6 +79,28 @@ export const isDddUploadAborted = (error: unknown): boolean =>
   !!error && typeof error === 'object' && (error as { status?: unknown; error?: unknown }).status === 'CUSTOM_ERROR' &&
   (error as { error?: unknown }).error === DDD_UPLOAD_ABORTED;
 
+/** `error.error` of a request that was not sent because it was bound to a session that is no longer the current one. */
+export const DDD_SESSION_CHANGED = 'DDD_SESSION_CHANGED';
+
+/** True for the error of a request that was not sent because its session is no longer the current one. */
+export const isDddSessionChanged = (error: unknown): boolean =>
+  !!error && typeof error === 'object' && (error as { status?: unknown }).status === 'CUSTOM_ERROR' &&
+  (error as { error?: unknown }).error === DDD_SESSION_CHANGED;
+
+/** Request header that carries the expected session key to the base query; it is removed before the request is sent. */
+export const DDD_EXPECTED_SESSION_KEY_HEADER = 'x-ddd-expected-session-key';
+
+/**
+ * `extraOptions` the base query reads: what binds the requests of an endpoint to a session (see
+ * {@link DddBaseQueryOptions.getSessionKey}).
+ */
+export interface DddSessionBindingOptions {
+  /** Binds each request to the session that is current when the request starts. */
+  bindToSession?: boolean;
+  /** Binds the request to this session (a `queryFn` passes it on to the base query). */
+  expectedSessionKey?: string | number;
+}
+
 /** Options of {@link createDddBaseQuery}. */
 export interface DddBaseQueryOptions {
   /** API origin, e.g. `https://api.example.com`. Request URLs are relative to it. */
@@ -84,6 +111,29 @@ export interface DddBaseQueryOptions {
   setTokens: (tokens: DddTokens, api: BaseQueryApi) => MaybePromise<void>;
   /** Called once when the session cannot be recovered (no refresh token, or the refresh was rejected). */
   onLogout: (api: BaseQueryApi) => MaybePromise<void>;
+  /**
+   * Identifies the current session by a value that survives a token refresh: the account id, or a counter the app
+   * raises on every login and logout; `null` without a session. Never the access token: it changes with each refresh.
+   *
+   * With it a request can be bound to a session. A bound request is sent, and repeated after a refresh, only while
+   * that session is the current one; otherwise it is answered with the error of {@link isDddSessionChanged}, without
+   * a network call, a refresh or a logout. A request is bound by one of:
+   * - {@link withDddExpectedSessionKey} in the endpoint's `query` (the session the caller prepared the request for),
+   * - `expectedSessionKey` of an upload ({@link DddUploadRequest}),
+   * - `extraOptions: { bindToSession: true }` on the endpoint: the session that is current when the request starts.
+   *
+   * Requests that are not bound are sent as without this option.
+   *
+   * @example
+   * getSessionKey: ({ getState }) => (getState() as RootState).auth.accountId,
+   *
+   * // An endpoint whose body belongs to the account it was prepared for:
+   * saveDraft: build.mutation<void, { accountId: number; draft: Draft }>({
+   *   query: ({ accountId, draft }) =>
+   *     withDddExpectedSessionKey({ url: '/api/client/drafts', method: 'POST', body: { draft } }, accountId),
+   * }),
+   */
+  getSessionKey?: (context: DddRequestContext) => MaybePromise<string | number | null | undefined>;
   /** Custom refresh. Default: {@link createDddRefresh} on `refreshPath`. */
   refresh?: DddRefreshFn;
   /** Refresh endpoint for the default refresh, e.g. `/api/admin/common/auth/refresh`. Required without `refresh`. */
@@ -155,15 +205,41 @@ export const dddParamsSerializer = (params: Record<string, unknown>): string =>
 
 const toFetchArgs = (args: string | FetchArgs): FetchArgs => (typeof args === 'string' ? { url: args } : args);
 
-const withBearer = (args: FetchArgs, accessToken: string | null | undefined): FetchArgs => {
-  if (!accessToken) return args;
+const toHeaders = (source: FetchArgs['headers']): Headers => {
   const headers = new Headers();
-  const source = args.headers;
   if (source instanceof Headers) source.forEach((value, key) => headers.set(key, value));
   else if (Array.isArray(source)) source.forEach(([key, value]) => key !== undefined && headers.set(key, value ?? ''));
   else if (source) Object.entries(source).forEach(([key, value]) => value !== undefined && headers.set(key, value));
+  return headers;
+};
+
+const withBearer = (args: FetchArgs, accessToken: string | null | undefined): FetchArgs => {
+  if (!accessToken) return args;
+  const headers = toHeaders(args.headers);
   if (!headers.has('authorization')) headers.set('authorization', `Bearer ${accessToken}`);
   return { ...args, headers };
+};
+
+/**
+ * Binds a request to a session: the base query sends it, and repeats it after a refresh, only while
+ * `expectedSessionKey` is the key of the current session ({@link DddBaseQueryOptions.getSessionKey}). The key travels
+ * in a request header that the base query removes before sending.
+ */
+export const withDddExpectedSessionKey = (request: string | FetchArgs, expectedSessionKey: string | number): FetchArgs => {
+  const args = toFetchArgs(request);
+  const headers = toHeaders(args.headers);
+  headers.set(DDD_EXPECTED_SESSION_KEY_HEADER, String(expectedSessionKey));
+  return { ...args, headers };
+};
+
+/** Splits the expected session key off a request; the returned request no longer carries the header. */
+const takeExpectedSessionKey = (args: FetchArgs): { request: FetchArgs; expectedSessionKey: string | null } => {
+  if (!args.headers) return { request: args, expectedSessionKey: null };
+  const headers = toHeaders(args.headers);
+  const expectedSessionKey = headers.get(DDD_EXPECTED_SESSION_KEY_HEADER);
+  if (expectedSessionKey === null) return { request: args, expectedSessionKey: null };
+  headers.delete(DDD_EXPECTED_SESSION_KEY_HEADER);
+  return { request: { ...args, headers }, expectedSessionKey };
 };
 
 /**
@@ -176,6 +252,7 @@ const withBearer = (args: FetchArgs, accessToken: string | null | undefined): Fe
  * - No refresh token, or a rejected refresh → `relogin()` when given; without it, or when it returns `null`,
  *   `onLogout()` once for that session and the original error is returned.
  * - A refresh whose session was logged out or replaced while it ran is discarded (no `setTokens`, no retry).
+ * - A request bound to a session (`getSessionKey`) is not sent once another session is the current one.
  *
  * @example
  * export const baseApi = createApi({
@@ -190,7 +267,7 @@ const withBearer = (args: FetchArgs, accessToken: string | null | undefined): Fe
  * });
  */
 export function createDddBaseQuery(options: DddBaseQueryOptions): DddUploadingBaseQuery {
-  const { getTokens, setTokens, onLogout, headers: headersHook, languageCode, fetchOptions, relogin } = options;
+  const { getTokens, setTokens, onLogout, getSessionKey, headers: headersHook, languageCode, fetchOptions, relogin } = options;
   const shouldRefresh = options.shouldRefresh ?? defaultShouldRefresh;
   if (!options.refresh && !options.refreshPath) {
     throw new Error('createDddBaseQuery: pass either `refresh` or `refreshPath`.');
@@ -231,6 +308,35 @@ export function createDddBaseQuery(options: DddBaseQueryOptions): DddUploadingBa
 
   const currentAccessToken = async (api: BaseQueryApi): Promise<string | null> =>
     (await getTokens(api))?.accessToken ?? null;
+
+  const currentSessionKey = async (api: BaseQueryApi): Promise<string | null> => {
+    const sessionKey = await (getSessionKey as NonNullable<typeof getSessionKey>)(api);
+    return sessionKey === null || sessionKey === undefined ? null : String(sessionKey);
+  };
+
+  /**
+   * The session a request is bound to, or `undefined` for a request that is not bound. Called when the request
+   * starts, before it waits for a running refresh.
+   */
+  const resolveBoundSessionKey = async (
+    requestSessionKey: string | number | null | undefined,
+    api: BaseQueryApi,
+    extraOptions: unknown,
+  ): Promise<string | null | undefined> => {
+    const binding = (extraOptions ?? {}) as DddSessionBindingOptions;
+    const expectedSessionKey = requestSessionKey ?? binding.expectedSessionKey ?? null;
+    if (expectedSessionKey === null && !binding.bindToSession) return undefined;
+    if (!getSessionKey) {
+      throw new Error('createDddBaseQuery: a request is bound to a session, pass `getSessionKey`.');
+    }
+    return expectedSessionKey === null ? currentSessionKey(api) : String(expectedSessionKey);
+  };
+
+  /** True when the request may be sent now: it is not bound, or its session is still the current one. */
+  const isBoundSessionCurrent = async (boundSessionKey: string | null | undefined, api: BaseQueryApi): Promise<boolean> =>
+    boundSessionKey === undefined || (await currentSessionKey(api)) === boundSessionKey;
+
+  const sessionChanged = { error: { status: 'CUSTOM_ERROR' as const, error: DDD_SESSION_CHANGED } };
 
   const runRefresh = async (api: BaseQueryApi, extraOptions: unknown): Promise<RefreshOutcome> => {
     const before = await getTokens(api);
@@ -278,15 +384,31 @@ export function createDddBaseQuery(options: DddBaseQueryOptions): DddUploadingBa
     return lastOutcome;
   };
 
+  /**
+   * One attempt: reads the token, then checks the bound session as the last step before sending, so a session that
+   * changed while the request waited is seen.
+   */
+  const sendRequest = async (
+    request: FetchArgs,
+    boundSessionKey: string | null | undefined,
+    api: BaseQueryApi,
+    extraOptions: {},
+  ): Promise<Awaited<ReturnType<DddRawBaseQuery>>> => {
+    const authorizedRequest = withBearer(request, await currentAccessToken(api));
+    if (!(await isBoundSessionCurrent(boundSessionKey, api))) return sessionChanged;
+    return rawBaseQuery(authorizedRequest, api, extraOptions);
+  };
+
   const baseQuery: DddBaseQuery = async (args, api, extraOptions) => {
+    const { request, expectedSessionKey } = takeExpectedSessionKey(toFetchArgs(args));
+    const boundSessionKey = await resolveBoundSessionKey(expectedSessionKey, api, extraOptions);
     // A request started during a refresh waits for it and then sends the current token.
     while (inflight) await inflight.catch(() => undefined);
     const startGeneration = generation;
-    const request = toFetchArgs(args);
-    const result = await rawBaseQuery(withBearer(request, await currentAccessToken(api)), api, extraOptions);
-    if (!result.error || !shouldRefresh(result.error, request)) return result;
+    const result = await sendRequest(request, boundSessionKey, api, extraOptions);
+    if (!result.error || isDddSessionChanged(result.error) || !shouldRefresh(result.error, request)) return result;
     if ((await recover(startGeneration, api, extraOptions)) !== 'refreshed') return result;
-    return rawBaseQuery(withBearer(request, await currentAccessToken(api)), api, extraOptions);
+    return sendRequest(request, boundSessionKey, api, extraOptions);
   };
 
   /** Headers of an upload: Bearer, then the same hooks as a fetch request. No content type: the runtime sets it. */
@@ -309,8 +431,14 @@ export function createDddBaseQuery(options: DddBaseQueryOptions): DddUploadingBa
     return (await headersHook?.(headers, context)) ?? headers;
   };
 
-  const sendUpload = async (request: DddUploadRequest, api: BaseQueryApi, extraOptions: unknown): Promise<DddUploadResult> => {
+  const sendUpload = async (
+    request: DddUploadRequest,
+    boundSessionKey: string | null | undefined,
+    api: BaseQueryApi,
+    extraOptions: unknown,
+  ): Promise<DddUploadResult> => {
     const headers = await uploadHeaders(request, api, extraOptions);
+    if (!(await isBoundSessionCurrent(boundSessionKey, api))) return sessionChanged;
     const query = request.params ? dddParamsSerializer(request.params) : '';
     const url = `${options.baseUrl.replace(/\/+$/, '')}/${request.url.replace(/^\/+/, '')}${query ? `${request.url.includes('?') ? '&' : '?'}${query}` : ''}`;
     return new Promise<DddUploadResult>((resolve) => {
@@ -349,12 +477,14 @@ export function createDddBaseQuery(options: DddBaseQueryOptions): DddUploadingBa
   };
 
   const upload: DddUploadingBaseQuery['upload'] = async (request, api, extraOptions) => {
+    const boundSessionKey = await resolveBoundSessionKey(request.expectedSessionKey, api, extraOptions);
     while (inflight) await inflight.catch(() => undefined);
     const startGeneration = generation;
-    const result = await sendUpload(request, api, extraOptions);
-    if (!result.error || !shouldRefresh(result.error, { url: request.url, method: request.method ?? 'POST' })) return result;
+    const result = await sendUpload(request, boundSessionKey, api, extraOptions);
+    if (!result.error || isDddSessionChanged(result.error)) return result;
+    if (!shouldRefresh(result.error, { url: request.url, method: request.method ?? 'POST' })) return result;
     if ((await recover(startGeneration, api, extraOptions)) !== 'refreshed') return result;
-    return sendUpload(request, api, extraOptions);
+    return sendUpload(request, boundSessionKey, api, extraOptions);
   };
 
   return Object.assign(baseQuery, { upload });

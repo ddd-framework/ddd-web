@@ -6,6 +6,10 @@ export {
   dddParamsSerializer,
   isDddUploadAborted,
   DDD_UPLOAD_ABORTED,
+  isDddSessionChanged,
+  withDddExpectedSessionKey,
+  DDD_SESSION_CHANGED,
+  DDD_EXPECTED_SESSION_KEY_HEADER,
 } from './baseQuery';
 export type {
   DddBaseQuery,
@@ -16,6 +20,7 @@ export type {
   DddUploadingBaseQuery,
   DddUploadRequest,
   DddUploadResult,
+  DddSessionBindingOptions,
 } from './baseQuery';
 export { buildDddMultipartBody, buildDddFormData, hasDddMultipartFiles, DDD_MULTIPART_BODY_FIELD } from './multipart';
 export type { DddFilePart, DddMultipartFiles } from './multipart';

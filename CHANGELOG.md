@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.5.0
+
+Requests can be bound to the session they were prepared for. Additive: without `getSessionKey` nothing changes.
+
+### Added
+- api: option `getSessionKey` of `createDddBaseQuery` and three ways to bind a request to a session:
+  `withDddExpectedSessionKey(request, key)` in an endpoint's `query`, `expectedSessionKey` of an upload, and
+  `extraOptions: { bindToSession: true }` (the session that is current when the request starts;
+  `{ expectedSessionKey }` for a `queryFn`). A bound request is sent, and repeated after a refresh, only while that
+  session is the current one; otherwise it ends with the error of `isDddSessionChanged` (`DDD_SESSION_CHANGED`)
+  without a network call, a refresh or a logout. Type `DddSessionBindingOptions`, constant
+  `DDD_EXPECTED_SESSION_KEY_HEADER`.
+
+### Fixed by binding
+- A request that waited for a running refresh, or was repeated after one, was sent with the token of whatever
+  session was current at that moment: after an account switch a body prepared for one account could be stored under
+  another. Bind requests whose body belongs to an account (offline queues, uploads, imports).
+
 ## 0.4.0
 
 File uploads, sessions without refresh token and typed cache tags. Minor release: the generated arguments of multipart
