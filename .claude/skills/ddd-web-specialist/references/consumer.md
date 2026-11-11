@@ -96,7 +96,7 @@ Add a script: `"gen:sdk": "ddd-web-sdk"`. Commit the generated files and, if you
 |---|---|
 | `<stem>.ts` | RTK `injectEndpoints` on the base api: endpoints, hooks (names path-derived) |
 | `<stem>Enhanced.ts` | `baseApi.enhanceEndpoints({ addTagTypes, endpoints })` — `providesTags` / `invalidatesTags`; import once |
-| `<stem>Tags.ts` | `<stem>TagTypes` (const list) and `<Stem>TagType` (union) |
+| `<stem>Tags.ts` | `<stem>TagTypes` (const list) and `<Stem>TagType` (union): the tags of the generated endpoints. A tag whose operations are all left out by `filterEndpoints` is not listed; hand-written endpoints name it as an own tag |
 | `models/…` | one file per schema in its namespace folder (`App/Domain/…`), barrel `index.ts`; same leaf names in different namespaces get unique exported names |
 
 Tag per endpoint: the entity of `x-ddd-entity` when present, else the operation tag, else the last path segment that

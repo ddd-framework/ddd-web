@@ -3,7 +3,7 @@ name: ddd-web-specialist
 description: "Use and maintain @mgamadeus/ddd-web, the TS client of mgamadeus/ddd: openapi-config.ts with defineConfig (schemaFile, sideEffects, responseHandlers, invalidation), the RTK Query SDK from ddd-web-sdk (Enhanced/Tags files, cache tags by entity identity, typed tagTypes via mergeDddTagTypes, downloads via blobResponseHandler, file uploads: multipartFiles argument, buildDddMultipartBody, upload with progress via baseQuery.upload), QueryOptions builders (buildQueryOptions, combineFilters, buildInFilter), createDddBaseQuery (Bearer, shared refresh + retry, relogin for sessions without refresh token, session-bound requests via getSessionKey, shouldRefresh, normalizeDddError), token storage, JWT helpers, link-skills, release. Use when wiring a frontend to a DDD backend, regenerating the SDK, building filters, uploading files, FormData, upload progress, fixing token refresh, guest login, a request sent under the wrong account after an account switch, stale cache tags, downloading an export, or releasing ddd-web."
 metadata:
   author: mgamadeus
-  version: "1.4.1"
+  version: "1.4.2"
   package: "@mgamadeus/ddd-web"
 ---
 

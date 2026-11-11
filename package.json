@@ -1,6 +1,6 @@
 {
   "name": "@mgamadeus/ddd-web",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "TypeScript web client for backends built with mgamadeus/ddd, the DDD entity framework for Symfony and Doctrine (Composer/Packagist). Generates a typed RTK Query SDK from the backend's OpenAPI document, builds DDD QueryOptions (filters, orderBy, expand, select, paging) and handles JWT auth with token refresh.",
   "keywords": [
     "ddd",

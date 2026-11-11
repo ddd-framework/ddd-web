@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.1
+
+### Fixed
+- codegen: `<stem>Tags.ts` lists only the tags of the endpoints that are generated. A tag whose operations are all
+  left out by `filterEndpoints` (or by `skipUpdatePostTwins`) was still listed, although no generated endpoint
+  provides or invalidates it. **If hand-written endpoints use such a tag, name it as an own tag**:
+  `mergeDddTagTypes([...adminApiTagTypes], ['Tracks'])`.
+
 ## 0.6.0
 
 ### Changed

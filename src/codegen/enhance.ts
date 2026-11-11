@@ -317,7 +317,7 @@ export interface EnhanceInput {
   index: OperationIndex;
   /** The spec (request body schemas for the identity heuristic). */
   doc?: OpenApiDocument;
-  /** Operation tags (normalised, sorted). */
+  /** Operation tags of the whole spec (normalised, sorted): the names a generated endpoint's tag is matched to. */
   operationTags: string[];
   /** Resolvers checked in order; the first that returns a list wins. */
   invalidation?: InvalidationResolver[];
@@ -326,7 +326,7 @@ export interface EnhanceInput {
 
 export interface EnhanceResult {
   source: string;
-  /** Operation tags plus tags introduced by `x-ddd-entity` or `invalidation`, sorted. */
+  /** Tags of the generated endpoints (operation tags, `x-ddd-entity`, `invalidation`), sorted. */
   tagTypes: string[];
 }
 
@@ -335,7 +335,9 @@ export function buildEnhancedEndpoints(input: EnhanceInput): EnhanceResult {
   const doc: OpenApiDocument = input.doc ?? {};
   const resolvers = input.invalidation ?? [];
   const lookup = new Map(input.operationTags.map((tag) => [tag.toLowerCase(), tag]));
-  const allTags = new Set(input.operationTags);
+  // The tag list holds the tags of the endpoints that are generated: an operation left out by `filterEndpoints` or
+  // twin skipping adds none, although its tag stays known for naming (`lookup`).
+  const allTags = new Set<string>();
   const used = new Set<string>();
   const lines: string[] = [];
   let skipped = 0;
@@ -345,6 +347,10 @@ export function buildEnhancedEndpoints(input: EnhanceInput): EnhanceResult {
 
   for (const endpoint of endpoints) {
     const info = index.byKey.get(operationKey(endpoint.method, endpoint.path));
+    for (const raw of info?.operation.tags ?? []) {
+      const known = lookup.get(normalizeTag(raw, audience).toLowerCase());
+      if (known) allTags.add(known);
+    }
     let tag: string | null;
     if (info?.entity) {
       tag = entityTag(info.entity.schema, lookup);
@@ -356,6 +362,7 @@ export function buildEnhancedEndpoints(input: EnhanceInput): EnhanceResult {
         tag = tagFromPath(endpoint.path, lookup);
         if (tag) urlFallbacks++;
       }
+      if (tag) allTags.add(tag);
     }
 
     let expression: TagExpression | null = null;
