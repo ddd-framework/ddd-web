@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.8.0
+
+### Added
+- `createDddBaseQuery().upload()` sends more than the DDD multipart form, with the same Bearer, hooks, refresh and
+  retry: a form the caller built (`formData`, sent as it is) and a JSON body (`body` without `files`,
+  `content-type: application/json`), each with upload progress; `files` is optional now.
+- Download progress: `onDownloadProgress(loaded, total)` and `responseType` (`json` default, `text`, `blob`); a
+  `GET` without body serves a download with progress.
+
+### Changed
+- The `params` of `upload()` go through `fetchOptions.paramsSerializer` when the consumer sets one (before: always
+  the DDD serializer).
+
 ## 0.7.0
 
 ### Added

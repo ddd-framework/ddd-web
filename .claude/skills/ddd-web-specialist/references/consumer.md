@@ -233,6 +233,18 @@ uploadAttachment: build.mutation<AttachmentResponse, { itemId: number; file: Fil
 ends with an error for which `isDddUploadAborted(error)` is true; other errors have the base query's shape, so
 `normalizeDddError` reads them.
 
+**Other bodies and downloads through `upload()`.** The same call sends a form you built (`formData`, sent as it is —
+for a backend route that is no DDD multipart form) or a JSON body (`body` without `files` / `formData`, sent with
+`content-type: application/json`), each with `onProgress`. A download with progress: `method: 'GET'`,
+`responseType: 'blob'`, `onDownloadProgress(loaded, total)` (`total` is 0 when the server sends no length); `data`
+is the `Blob`. `params` go through your `fetchOptions.paramsSerializer` when you set one, as on every other request.
+
+```ts
+dddBaseQuery.upload({ url: '/api/client/media/import', body: { rows }, onProgress }, api, extraOptions);   // JSON
+dddBaseQuery.upload({ url: '/legacy/upload', formData, onProgress }, api, extraOptions);                 // own form
+dddBaseQuery.upload({ url: '/api/client/reports/42/export', method: 'GET', responseType: 'blob', onDownloadProgress }, api, extraOptions);
+```
+
 ## 4. Query builders (`/query`)
 
 The backend reads `filters`, `orderBy`, `expand`, `select`, `top`, `skip` (no `$` prefix). Default `top` is 50.

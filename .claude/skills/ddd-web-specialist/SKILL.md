@@ -1,6 +1,6 @@
 ---
 name: ddd-web-specialist
-description: "Use and maintain @mgamadeus/ddd-web, the TS client of mgamadeus/ddd: openapi-config.ts with defineConfig (schemaFile, sideEffects, responseHandlers, invalidation), the RTK Query SDK from ddd-web-sdk (Enhanced/Tags files, cache tags by entity identity, mergeDddTagTypes, blobResponseHandler downloads, multipartFiles uploads, upload progress via baseQuery.upload), QueryOptions builders (buildQueryOptions, combineFilters, buildInFilter), createDddBaseQuery (Bearer, shared refresh + retry, relogin without refresh token, session-bound requests (getSessionKey), shouldRefresh, normalizeDddError), token storage, JWT helpers, foreign global Request (MooTools: dddFetchApiRequestPlugin), link-skills, release. Use when wiring a frontend to a DDD backend, regenerating the SDK, building filters, uploading files, FormData, upload progress, fixing token refresh, guest login, a request sent under the wrong account after a switch, stale cache tags, downloading an export, requests failing in a legacy page, or releasing ddd-web."
+description: "Use and maintain @mgamadeus/ddd-web, the TS client of mgamadeus/ddd: openapi-config.ts with defineConfig (schemaFile, sideEffects, responseHandlers, invalidation), the RTK Query SDK from ddd-web-sdk (Enhanced/Tags files, cache tags by entity identity, mergeDddTagTypes, blobResponseHandler downloads, multipartFiles uploads, upload/download progress via baseQuery.upload), QueryOptions builders (buildQueryOptions, combineFilters, buildInFilter), createDddBaseQuery (Bearer, shared refresh + retry, relogin, session-bound requests, shouldRefresh, normalizeDddError), token storage, JWT helpers, foreign global Request (MooTools: dddFetchApiRequestPlugin), link-skills, release. Use when wiring a frontend to a DDD backend, regenerating the SDK, building filters, uploading files, FormData, upload or download progress, fixing token refresh, guest login, a request sent under the wrong account after a switch, stale cache tags, downloading an export, requests failing in a legacy page, or releasing ddd-web."
 metadata:
   author: mgamadeus
   version: "1.4.2"
@@ -93,7 +93,8 @@ const { data } = useGetApiAdminLibraryBooksListQuery({
   When the spec declares JSON for such a route, add a `responseHandlers` override (`handler: 'blob'`) — never
   hand-write a stopgap endpoint.
 - **File uploads** go through the generated `multipartFiles` argument (operations with a multipart request body); for
-  progress or cancel use `dddBaseQuery.upload()` in a `queryFn`. Never hand-write `new FormData()` with an own
+  progress or cancel use `dddBaseQuery.upload()` in a `queryFn` (also for a JSON body, a form you built and a
+  download with progress). Never hand-write `new FormData()` with an own
   `fetch` / `XMLHttpRequest` and an own token: it bypasses the session, the refresh and the headers hooks.
 - **Sessions without refresh token** (guest, device, impersonation) recover through the `relogin` option — never a
   placeholder refresh token.

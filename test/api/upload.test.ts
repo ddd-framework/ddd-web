@@ -130,3 +130,92 @@ describe('createDddBaseQuery().upload', () => {
     expect(hanging.xhr.sent).toHaveLength(1);
   });
 });
+
+describe('createDddBaseQuery().upload — other bodies, downloads, the params serializer', () => {
+  const recordingXhr = (response: { status: number; text?: string; blob?: Blob }) => {
+    const sent: Array<{ method: string; url: string; headers: Record<string, string>; body: unknown; responseType: string }> = [];
+    const create = (): XMLHttpRequest => {
+      const xhr = {
+        upload: {} as { onprogress?: (event: unknown) => void },
+        onprogress: undefined as undefined | ((event: unknown) => void),
+        responseType: '',
+        status: 0,
+        responseText: '',
+        response: undefined as unknown,
+        method: '',
+        url: '',
+        headers: {} as Record<string, string>,
+        onload: undefined as undefined | (() => void),
+        onerror: undefined as undefined | (() => void),
+        onabort: undefined as undefined | (() => void),
+        open(method: string, url: string) {
+          this.method = method;
+          this.url = url;
+        },
+        setRequestHeader(name: string, value: string) {
+          this.headers[name.toLowerCase()] = value;
+        },
+        abort() {
+          this.onabort?.();
+        },
+        send(body: unknown) {
+          sent.push({ method: this.method, url: this.url, headers: this.headers, body, responseType: this.responseType });
+          queueMicrotask(() => {
+            this.upload.onprogress?.({ lengthComputable: true, loaded: 2, total: 2 });
+            this.onprogress?.({ lengthComputable: false, loaded: 5, total: 0 });
+            this.status = response.status;
+            this.responseText = response.text ?? '';
+            this.response = response.blob ?? response.text;
+            this.onload?.();
+          });
+        },
+      };
+      return xhr as unknown as XMLHttpRequest;
+    };
+    return { create, sent };
+  };
+
+  it('sends a JSON body with its content type and upload progress', async () => {
+    const xhr = recordingXhr({ status: 200, text: '{"ok":true}' });
+    const { baseQuery } = setup([], { createUploadRequest: xhr.create });
+    const onProgress = vi.fn();
+    const result = await baseQuery.upload({ url: '/api/client/items', body: { item: { title: 't' } }, onProgress }, makeApi('mutation'));
+    expect(result).toEqual({ data: { ok: true } });
+    expect(xhr.sent[0]!.body).toBe('{"item":{"title":"t"}}');
+    expect(xhr.sent[0]!.headers['content-type']).toBe('application/json');
+    expect(onProgress).toHaveBeenCalledWith(2, 2);
+  });
+
+  it('sends a form the caller built as it is, without a content type of its own', async () => {
+    const xhr = recordingXhr({ status: 200, text: '{}' });
+    const { baseQuery } = setup([], { createUploadRequest: xhr.create });
+    const formData = new FormData();
+    formData.append('file', file);
+    await baseQuery.upload({ url: '/api/client/media', formData, body: { ignored: true } }, makeApi('mutation'));
+    expect(xhr.sent[0]!.body).toBe(formData);
+    expect(xhr.sent[0]!.headers['content-type']).toBeUndefined();
+  });
+
+  it('downloads a blob with download progress and no body', async () => {
+    const blob = new Blob(['csv']);
+    const xhr = recordingXhr({ status: 200, blob });
+    const { baseQuery } = setup([], { createUploadRequest: xhr.create });
+    const onDownloadProgress = vi.fn();
+    const result = await baseQuery.upload({ url: '/api/client/export', method: 'GET', responseType: 'blob', onDownloadProgress }, makeApi('query'));
+    expect(result).toEqual({ data: blob });
+    expect(xhr.sent[0]!.body).toBeNull();
+    expect(xhr.sent[0]!.responseType).toBe('blob');
+    expect(onDownloadProgress).toHaveBeenCalledWith(5, 0);
+  });
+
+  it("serializes the params with the consumer's paramsSerializer", async () => {
+    const xhr = recordingXhr({ status: 200, text: '{}' });
+    const fetchFn = vi.fn(async () => json(200, {}));
+    const { baseQuery } = setup([], {
+      createUploadRequest: xhr.create,
+      fetchOptions: { fetchFn, paramsSerializer: (params) => `custom=${Object.keys(params).join(',')}` },
+    });
+    await baseQuery.upload({ url: '/api/client/media', formData: new FormData(), params: { a: 1, b: 2 } }, makeApi('mutation'));
+    expect(xhr.sent[0]!.url).toBe('https://api.test/api/client/media?custom=a,b');
+  });
+});

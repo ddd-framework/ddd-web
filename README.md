@@ -92,6 +92,9 @@ queryFn: ({ file, onProgress }, api, extraOptions) =>
   dddBaseQuery.upload({ url: '/api/client/files', files: { files: [file] }, onProgress }, api, extraOptions),
 ```
 
+`upload()` also sends a form you built (`formData`) or a JSON `body` with upload progress, and downloads with
+`responseType: 'blob'` and `onDownloadProgress`.
+
 ### Sessions without refresh token
 
 `relogin` re-opens a guest, device or impersonation session when there is no refresh token or it was rejected:

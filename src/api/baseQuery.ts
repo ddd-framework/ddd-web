@@ -36,14 +36,29 @@ export interface DddUploadRequest {
   url: string;
   /** Default `POST`. */
   method?: string;
-  /** JSON envelope, sent in the form field `body`; left out when `undefined`. */
+  /**
+   * With `files`: the JSON envelope, sent in the form field `body` (left out when `undefined`). Without `files` and
+   * `formData`: the JSON body of the request (`content-type: application/json`); `undefined` sends no body.
+   */
   body?: unknown;
-  /** File parts per form field (the `Parameter::FILES` properties of the request DTO). */
-  files: DddMultipartFiles;
-  /** Query parameters; `null` / `undefined` values are skipped. */
+  /** File parts per form field (the `Parameter::FILES` properties of the request DTO): the DDD multipart form. */
+  files?: DddMultipartFiles;
+  /** A form the caller built, sent as it is (wins over `body` and `files`). */
+  formData?: FormData;
+  /**
+   * Query parameters; `null` / `undefined` values are skipped. Serialized by `fetchOptions.paramsSerializer` when the
+   * base query has one, else by the DDD serializer.
+   */
   params?: Record<string, unknown>;
   /** Bytes of the request body sent so far. Called again from 0 when the upload is repeated after a refresh. */
   onProgress?: (loaded: number, total: number) => void;
+  /** Bytes of the response received so far; `total` is 0 when the server sends no length. */
+  onDownloadProgress?: (loaded: number, total: number) => void;
+  /**
+   * How the response becomes `data` (and an error's `data`): `json` (default; a body that is no JSON stays text),
+   * `text`, or `blob` (a download).
+   */
+  responseType?: 'json' | 'text' | 'blob';
   /** Aborting cancels the request; the result is then the error of {@link isDddUploadAborted}. */
   signal?: AbortSignal;
   /**
@@ -59,8 +74,10 @@ export type DddUploadResult = { data: unknown; error?: undefined } | { data?: un
 /** The base query returned by {@link createDddBaseQuery}: a {@link DddBaseQuery} that can also upload with progress. */
 export type DddUploadingBaseQuery = DddBaseQuery & {
   /**
-   * Sends a multipart upload with progress (XMLHttpRequest: `fetch` reports no upload progress) through the same
-   * session as every request: Bearer, `headers` / `languageCode` hooks, one shared refresh and one retry.
+   * Sends a request with progress (XMLHttpRequest: `fetch` reports no upload progress) through the same session as
+   * every request: Bearer, `headers` / `languageCode` hooks, one shared refresh and one retry. The body is the DDD
+   * multipart form (`files`), a form the caller built (`formData`) or JSON (`body` alone); `onDownloadProgress` with
+   * `responseType: 'blob'` serves a download.
    *
    * @example
    * uploadAttachment: build.mutation<AttachmentResponse, { id: number; file: File; onProgress?: (loaded: number, total: number) => void }>({
@@ -260,6 +277,14 @@ const takeExpectedSessionKey = (args: FetchArgs): { request: FetchArgs; expected
   return { request: { ...args, headers }, expectedSessionKey };
 };
 
+/** The body an upload sends and its content type (none for a form: the runtime sets the boundary). */
+function buildUploadBody(request: DddUploadRequest): { body: FormData | string | null; contentType?: string } {
+  if (request.formData) return { body: request.formData };
+  if (request.files) return { body: buildDddFormData(request.body, request.files) };
+  if (request.body === undefined) return { body: null };
+  return { body: JSON.stringify(request.body), contentType: 'application/json' };
+}
+
 /**
  * Creates the RTK Query base query for a DDD backend.
  *
@@ -458,10 +483,11 @@ export function createDddBaseQuery(options: DddBaseQueryOptions): DddUploadingBa
   ): Promise<DddUploadResult> => {
     const headers = await uploadHeaders(request, api, extraOptions);
     if (!(await isBoundSessionCurrent(boundSessionKey, api))) return sessionChanged;
-    const query = request.params ? dddParamsSerializer(request.params) : '';
+    const query = request.params ? (fetchOptions?.paramsSerializer ?? dddParamsSerializer)(request.params) : '';
     const url = `${options.baseUrl.replace(/\/+$/, '')}/${request.url.replace(/^\/+/, '')}${query ? `${request.url.includes('?') ? '&' : '?'}${query}` : ''}`;
     return new Promise<DddUploadResult>((resolve) => {
-      const { signal, onProgress } = request;
+      const { signal, onProgress, onDownloadProgress } = request;
+      const responseType = request.responseType ?? 'json';
       const aborted: DddUploadResult = { error: { status: 'CUSTOM_ERROR', error: DDD_UPLOAD_ABORTED } };
       if (signal?.aborted) return resolve(aborted);
       const xhr = options.createUploadRequest ? options.createUploadRequest() : new XMLHttpRequest();
@@ -471,27 +497,41 @@ export function createDddBaseQuery(options: DddBaseQueryOptions): DddUploadingBa
         signal?.removeEventListener('abort', onAbort);
         resolve(result);
       };
+      const sentBody = buildUploadBody(request);
       xhr.open(request.method ?? 'POST', url);
+      if (responseType === 'blob') xhr.responseType = 'blob';
+      if (sentBody.contentType) headers.set('content-type', sentBody.contentType);
       headers.forEach((value, name) => xhr.setRequestHeader(name, value));
       if (onProgress && xhr.upload) {
         xhr.upload.onprogress = (event) => {
           if (event.lengthComputable) onProgress(event.loaded, event.total);
         };
       }
+      if (onDownloadProgress) {
+        xhr.onprogress = (event) => onDownloadProgress(event.loaded, event.lengthComputable ? event.total : 0);
+      }
       xhr.onload = () => {
-        const text = xhr.responseText;
         let data: unknown;
-        try {
-          data = text ? JSON.parse(text) : undefined;
-        } catch {
-          data = text;
+        if (responseType === 'blob') {
+          data = xhr.response;
+        } else {
+          const text = xhr.responseText;
+          if (responseType === 'text') {
+            data = text;
+          } else {
+            try {
+              data = text ? JSON.parse(text) : undefined;
+            } catch {
+              data = text;
+            }
+          }
         }
         if (xhr.status >= 200 && xhr.status < 300) finish({ data: data ?? null });
         else finish({ error: { status: xhr.status, data } });
       };
       xhr.onerror = () => finish({ error: { status: 'FETCH_ERROR', error: 'The upload did not reach the server.' } });
       xhr.onabort = () => finish(aborted);
-      xhr.send(buildDddFormData(request.body, request.files));
+      xhr.send(sentBody.body);
     });
   };
 
