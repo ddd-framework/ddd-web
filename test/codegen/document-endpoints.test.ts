@@ -1,0 +1,52 @@
+import { afterEach, describe, expect, it } from 'vitest';
+import { buildEndpointNameFromPath, generateSdk, silentLogger } from '../../src/codegen/index';
+import { apiEntry, createApp, read, readSample, removeApp, writeSpec } from './helpers';
+
+const apps: string[] = [];
+afterEach(() => {
+  while (apps.length) removeApp(apps.pop()!);
+});
+
+describe('buildEndpointNameFromPath (endpoints.naming: path)', () => {
+  it.each([
+    ['post', '/app/api/client/ai/conversations/{locationId}/purposed/{purposeName}', 'postClientAiConversationsPurposedByPurposeNameByLocationId'],
+    ['get', '/app/api/client/ai/conversations/{aiConversationId}/messages/{messageId}/sent-payload', 'getClientAiConversationsMessagesSentPayloadByMessageId'],
+    ['get', '/app/api/client/ai/conversations/{locationId}/list', 'getClientAiConversationsListByLocationId'],
+    ['post', '/app/api/client/ai/conversations/{aiConversationId}/postMessage', 'postClientAiConversationsPostMessageByAiConversationId'],
+    ['get', '/api/client/a2a/agent-card.json', 'getClientA2aAgentCardJson'],
+    ['delete', '/api/admin/library/books/{bookId}', 'deleteAdminLibraryBooksByBookId'],
+  ])('%s %s → %s', (method, path, name) => {
+    expect(buildEndpointNameFromPath(method, path)).toBe(name);
+  });
+});
+
+describe('generateSdk — endpoints option', () => {
+  it('names endpoints by the path rule and sends the body as requestBody', async () => {
+    const app = createApp();
+    apps.push(app);
+    await generateSdk({
+      cwd: app,
+      config: { apis: [apiEntry(writeSpec(app, readSample()))], endpoints: { naming: 'path', bodyArg: 'requestBody' } },
+      logger: silentLogger,
+    });
+    const api = read(app, 'src/api/adminApi.ts');
+    expect(api).toMatch(/getAdminLibraryBooksListBy|getAdminLibraryBooksList:/);
+    expect(api).toContain('deleteAdminLibraryBooksByBookId:');
+    expect(api).toContain('body: queryArg.requestBody');
+    expect(api).not.toMatch(/queryArg\.bookUpdateRequestDto/);
+    const argType = read(app, 'src/models/_endpoints/PatchAdminLibraryBooksApiArg.ts');
+    expect(argType).toMatch(/requestBody: BookUpdateRequestDto;/);
+    expect(read(app, 'src/api/adminApiEnhanced.ts')).toContain('deleteAdminLibraryBooksByBookId');
+  }, 60_000);
+
+  it('refuses two operations with the same name', async () => {
+    const app = createApp();
+    apps.push(app);
+    const doc = readSample();
+    doc.paths!['/api/admin/library/{shelfId}/books/{bookId}/notes'] = { get: { responses: { '200': { description: 'ok' } } } };
+    doc.paths!['/api/admin/library/{roomId}/books/{bookId}/notes'] = { get: { responses: { '200': { description: 'ok' } } } };
+    await expect(
+      generateSdk({ cwd: app, config: { apis: [apiEntry(writeSpec(app, doc))], endpoints: { naming: 'path' } }, logger: silentLogger }),
+    ).rejects.toThrow(/are both named "getAdminLibraryBooksNotesByBookId"/);
+  });
+});

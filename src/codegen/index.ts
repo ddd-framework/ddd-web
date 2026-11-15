@@ -4,6 +4,8 @@ export type {
   InvalidationOperation,
   InvalidationResolver,
   InvalidationTag,
+  EndpointNamingOperation,
+  EndpointOptions,
   LoadedConfig,
   ModelOptions,
   OperationMatcher,
@@ -22,3 +24,4 @@ export { consoleLogger, SdkGenerationError, silentLogger } from './log';
 export type { Logger } from './log';
 export { loadSpec, validateSpec, SUPPORTED_CONTRACT } from './spec';
 export type { OpenApiDocument } from './openapi';
+export { buildEndpointNameFromPath } from './document-endpoints';

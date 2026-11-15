@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.10.0
+
+### Added
+- Codegen option `endpoints` (off by default, output unchanged without it):
+  - `naming: 'path'`: endpoint (and hook) names as a pure function of verb and path — the prefix
+    (`stripPathPrefix`, default `/api` or `/app/api`) cut, every `{param}/` cut out and only the last one kept, the
+    rest capitalised behind the verb, `By<LastInner>` appended, a trailing `{param}` as `By<Param>` where it stands;
+    `naming` may also be a function. Two operations with the same name stop the run. `buildEndpointNameFromPath` is
+    exported.
+  - `bodyArg: 'requestBody'`: the request body is the argument's `requestBody`, independent of the DTO's schema
+    name.
+
 ## 0.9.0
 
 ### Added

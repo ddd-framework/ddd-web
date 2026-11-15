@@ -1,9 +1,11 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { createJiti } from 'jiti';
+import type { EndpointOptions } from './document-endpoints';
 import type { ModelOptions } from './document-models';
 import type { DddEntityExtension, HttpMethod, OpenApiOperation } from './openapi';
 
+export type { EndpointNamingOperation, EndpointOptions } from './document-endpoints';
 export type { ModelOptions } from './document-models';
 
 /** Selects operations by HTTP method (optional, case-insensitive) and path (exact string or RegExp). */
@@ -160,6 +162,11 @@ export interface SdkConfig {
    * {@link ModelOptions}).
    */
   models?: ModelOptions;
+  /**
+   * How the endpoints and their body argument are named: RTK codegen's names (default), a rule of verb and path, or
+   * your own function; the body as `requestBody` (see {@link EndpointOptions}).
+   */
+  endpoints?: EndpointOptions;
   /** tsconfig used for the final type check. Default `tsconfig.json` next to the config file. */
   tsconfig?: string;
 }

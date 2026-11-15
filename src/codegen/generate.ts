@@ -10,6 +10,7 @@ import {
   type ResolvedApi,
   type SdkConfig,
 } from './config';
+import { prepareDocumentForEndpoints } from './document-endpoints';
 import { prepareDocumentForModels } from './document-models';
 import { buildEnhancedEndpoints } from './enhance';
 import { parseApiEndpoints } from './endpoints';
@@ -151,7 +152,8 @@ export async function generateSdk(options: GenerateSdkOptions = {}): Promise<Gen
 
       const modelOptions = loaded.config.models ?? {};
       const prepared = prepareDocumentForModels(doc, modelOptions);
-      const rtk = await runRtkCodegen(api, prepared.doc, index, path.join(specDir, `${i}.json`), prettierConfigFile);
+      const rtkDoc = prepareDocumentForEndpoints(prepared.doc, loaded.config.endpoints ?? {});
+      const rtk = await runRtkCodegen(api, rtkDoc, index, path.join(specDir, `${i}.json`), prettierConfigFile);
       const endpoints = parseApiEndpoints(rtk.code, logger, rtk.locations);
       const handlerEndpoints = detectResponseHandlerEndpoints(doc, endpoints, api.responseHandlers);
       const responseKinds = new Map<string, 'text' | 'blob'>();
