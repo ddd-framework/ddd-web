@@ -39,6 +39,28 @@ describe('generateSdk — endpoints option', () => {
     expect(read(app, 'src/api/adminApiEnhanced.ts')).toContain('deleteAdminLibraryBooksByBookId');
   }, 60_000);
 
+  it('keeps the built names verbatim (no second camel-casing) and your filters match them', async () => {
+    const app = createApp();
+    apps.push(app);
+    const doc = readSample();
+    doc.paths!['/api/admin/library/books/importFromLegacyDB'] = { post: { responses: { '200': { description: 'ok' } } } };
+    doc.paths!['/api/admin/a2a/agent-card.json'] = { get: { responses: { '200': { description: 'ok' } } } };
+    await generateSdk({
+      cwd: app,
+      config: {
+        apis: [apiEntry(writeSpec(app, doc), { filterEndpoints: (name: string) => name !== 'deleteAdminLibraryBooksByBookId' })],
+        endpoints: { naming: 'path' },
+      },
+      logger: silentLogger,
+    });
+    const api = read(app, 'src/api/adminApi.ts');
+    expect(api).toContain('postAdminLibraryBooksImportFromLegacyDB:');
+    expect(api).toContain('getAdminA2aAgentCardJson:');
+    expect(api).toContain('usePostAdminLibraryBooksImportFromLegacyDBMutation');
+    expect(api).not.toContain('dddEndpoint');
+    expect(api).not.toContain('deleteAdminLibraryBooksByBookId:');
+  }, 60_000);
+
   it('refuses two operations with the same name', async () => {
     const app = createApp();
     apps.push(app);

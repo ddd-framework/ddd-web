@@ -47,6 +47,50 @@ const specWithDocumentNames = () => {
   return doc;
 };
 
+/** Two models with one name in two folders, an objectType, a dash enum and an enum on an array schema. */
+const specForRcDryRun = () => {
+  const doc = specWithDocumentNames();
+  const schemas = doc.components!.schemas!;
+  schemas['App.Domain.Money.Currency'] = { type: 'object', properties: { code: { type: 'string' } } };
+  schemas['App.Domain.Common.Currency'] = { type: 'object', properties: { symbol: { type: 'string' } } };
+  const message = schemas[`${MESSAGES}.AIConversationMessage`] as { properties: Record<string, unknown> };
+  message.properties.price = { $ref: '#/components/schemas/App.Domain.Money.Currency' };
+  message.properties.display = { $ref: '#/components/schemas/App.Domain.Common.Currency' };
+  message.properties.objectType = { type: 'string', nullable: true };
+  message.properties.realtimeModel = { type: 'string', enum: ['gpt-realtime', 'gpt-realtime-mini'] };
+  message.properties.platforms = { type: 'array', enum: ['facebook', 'instagram'], items: { type: 'string' } };
+  return doc;
+};
+
+describe('generateSdk — models for a whole client tree (index, objectType, wide enums)', () => {
+  it('exports each schema name in its folder, aliases where it repeats, writes no barrel', async () => {
+    const app = createApp();
+    apps.push(app);
+    await generateSdk({
+      cwd: app,
+      config: {
+        apis: [apiEntry(writeSpec(app, specForRcDryRun()))],
+        models: { naming: 'document', enums: 'const', enumPropertyType: 'wide', objectType: 'const', nullableRefs: true, idType: 'number', index: false },
+      },
+      logger: silentLogger,
+    });
+    expect(read(app, 'src/models/App/Domain/Money/Currency.ts')).toMatch(/export type Currency\b/);
+    expect(read(app, 'src/models/App/Domain/Common/Currency.ts')).toMatch(/export type Currency\b/);
+    expect(fs.existsSync(path.join(app, 'src/models/index.ts'))).toBe(false);
+    const message = read(app, 'src/models/App/Domain/AI/Entities/Conversations/Messages/AIConversationMessage.ts')
+      .replace(/\s+/g, ' ').replace(/< /g, '<').replace(/ >/g, '>').replace(/: \| /g, ': ');
+    expect(message).toMatch(/import \{ Currency( as \w+)? \} from "[^"]*Money\/Currency"/);
+    expect(message).toMatch(/import \{ Currency as \w+ \} from "[^"]*Common\/Currency"|import \{ Currency as \w+ \} from "[^"]*Money\/Currency"/);
+    expect(message).toContain('App_Domain_AI_Entities_Conversations_Messages_AIConversationMessage: "App\\\\Domain\\\\AI\\\\Entities\\\\Conversations\\\\Messages\\\\AIConversationMessage"');
+    expect(message).toMatch(/ objectType: \(typeof AIConversationMessageObjectType\)\[keyof typeof AIConversationMessageObjectType\] \| null;/);
+    expect(message).toMatch(/status\?: \(typeof AIConversationMessageStatus\)\[keyof typeof AIConversationMessageStatus\] \| null/);
+    expect(message).toContain('gptRealtime: "gpt-realtime"');
+    expect(message).toContain('gptRealtimeMini: "gpt-realtime-mini"');
+    expect(message).toMatch(/platforms\?: Array<\(typeof AIConversationMessagePlatforms\)\[keyof typeof AIConversationMessagePlatforms\]>/);
+    expect(read(app, 'src/api/adminApi.ts')).not.toMatch(/from ["']\.\.\/models["']/);
+  }, 60_000);
+});
+
 describe('generateSdk — models as the document writes them (models option)', () => {
   it('names and places by the schema name, enums as const objects, | null beside a nullable $ref, the id type', async () => {
     const app = createApp();

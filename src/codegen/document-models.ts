@@ -8,10 +8,16 @@ export interface ModelOptions {
    * `document`: a model is named and placed by its schema name as the document writes it — the last dot segment is
    * the model name, unchanged (`AIConversationMessage`, not `AiConversationMessage`), the segments before it are the
    * folders; a folder that happens to prefix the last segment never splits it (`…Messages.DelegationResults` stays
-   * `DelegationResults` beside a `…Messages.Delegation` namespace). `rtk` (default): RTK codegen's names, placed by the
-   * namespace registry.
+   * `DelegationResults` beside a `…Messages.Delegation` namespace). Every model file exports its own schema's name,
+   * also when another folder holds the same name (the path tells them apart; an importer aliases it). `rtk` (default):
+   * RTK codegen's names, placed by the namespace registry.
    */
   naming?: 'rtk' | 'document';
+  /**
+   * `false`: no barrel `index.ts` in the models folder — the api file and the models import every model by its path.
+   * Default `true`. With `naming: 'document'` the barrel leaves out a model whose name another folder holds too.
+   */
+  index?: boolean;
   /**
    * `const`: an enum property becomes two exported objects in its model's file, `<Model><Property>` and
    * `<Model><Property>Strict` (`as const`), keyed by the enum values; the property is typed from the Strict object
@@ -19,6 +25,17 @@ export interface ModelOptions {
    * union of RTK codegen. Needs `naming: 'document'` (the const names start with the document's model name).
    */
   enums?: 'union' | 'const';
+  /**
+   * With `enums: 'const'`: the property's type from the Strict object (`strict`, default: the union of the values) or
+   * from the plain object (`wide`: `(typeof X)[keyof typeof X]`, in effect `string`).
+   */
+  enumPropertyType?: 'strict' | 'wide';
+  /**
+   * `const` (with `enums: 'const'`): a string property named `objectType` (the class name a DDD write reads) gets a
+   * one-value enum const of its schema name with `\\` for `.` (`<Model>ObjectType` = `{ App_Domain_X: "App\\Domain\\X" }`)
+   * and is required. Default `document` (as declared).
+   */
+  objectType?: 'document' | 'const';
   /** `| null` beside a `$ref` whose property is nullable (RTK codegen drops it). Default `false`. */
   nullableRefs?: boolean;
   /**
@@ -119,38 +136,55 @@ export function findDocumentModel(
   return model ? { model, suffix: match![2] ?? '' } : null;
 }
 
-/** The key an enum value gets in its const object: spaces, `/` and `\` become `_`, an empty value `EMPTY`. */
+/**
+ * The key an enum value gets in its const object: a dash camel-cases (`gpt-realtime` → `gptRealtime`), spaces, `/` and
+ * `\` become `_`, an empty value `EMPTY`; a key that is still no identifier is quoted.
+ */
 export function enumKeyOf(value: string): string {
   if (value.trim() === '') return 'EMPTY';
-  const key = value.replace(/[ /\\]+/g, '_');
+  const key = value.replace(/-+([A-Za-z0-9])/g, (_, next: string) => next.toUpperCase()).replace(/[ /\\]+/g, '_');
   return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(key) ? key : JSON.stringify(key);
 }
 
 /**
  * The enum const objects of a model and its body with every enum property typed from them (`enums: 'const'`).
- * Covers a property's own `enum` and the `enum` of its array items.
+ * Covers a property's own `enum` (an array schema with an `enum` stays an array) and the `enum` of its array items;
+ * with `objectType: 'const'` also the `objectType` string property (its schema name, required).
  */
-export function applyEnumConsts(body: string, modelName: string, schema: SchemaObject): { body: string; consts: Map<string, string> } {
+export function applyEnumConsts(
+  body: string,
+  modelName: string,
+  model: DocumentModel,
+  options: Pick<ModelOptions, 'enumPropertyType' | 'objectType'> = {},
+): { body: string; consts: Map<string, string> } {
+  const { schema, schemaKey } = model;
   const consts = new Map<string, string>();
   const typeTexts = new Map<string, string>();
+  const requiredNames = new Set<string>();
   for (const [propertyName, property] of Object.entries(schema.properties ?? {})) {
     if (!isObject(property)) continue;
-    const isArray = isObject(property.items) && Array.isArray(property.items.enum);
-    const values = (isArray ? property.items!.enum : property.enum)?.filter((value): value is string | number => typeof value === 'string' || typeof value === 'number');
+    const isItemsEnum = isObject(property.items) && Array.isArray(property.items.enum);
+    const isArray = isItemsEnum || property.type === 'array';
+    const isObjectType =
+      options.objectType === 'const' && propertyName === 'objectType' && property.type === 'string' && !Array.isArray(property.enum);
+    const declaredValues = isObjectType ? [schemaKey.split('.').join('\\')] : isItemsEnum ? property.items!.enum : property.enum;
+    const values = declaredValues?.filter((value): value is string | number => typeof value === 'string' || typeof value === 'number');
     if (!values || values.length === 0) continue;
     const constName = `${modelName}${propertyName.charAt(0).toUpperCase()}${propertyName.slice(1)}`;
     if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(constName)) continue;
     const members = [...new Set(values.map(String))].map((value) => `  ${enumKeyOf(value)}: ${JSON.stringify(value)},`).join('\n');
     consts.set(constName, `export const ${constName} = {\n${members}\n};\n\nexport const ${constName}Strict = {\n${members}\n} as const;`);
-    const memberType = `(typeof ${constName}Strict)[keyof typeof ${constName}Strict]`;
+    const typedFrom = options.enumPropertyType === 'wide' ? constName : `${constName}Strict`;
+    const memberType = `(typeof ${typedFrom})[keyof typeof ${typedFrom}]`;
     const nullable = property.nullable === true || (property.enum ?? []).includes(null);
     typeTexts.set(propertyName, `${isArray ? `Array<${memberType}>` : memberType}${nullable ? ' | null' : ''}`);
+    if (isObjectType) requiredNames.add(propertyName);
   }
-  return { body: replacePropertyTypes(body, typeTexts), consts };
+  return { body: replacePropertyTypes(body, typeTexts, requiredNames), consts };
 }
 
 /** The body with the types of the named properties of its first type declaration replaced. */
-function replacePropertyTypes(body: string, typeTexts: ReadonlyMap<string, string>): string {
+function replacePropertyTypes(body: string, typeTexts: ReadonlyMap<string, string>, requiredNames: ReadonlySet<string> = new Set()): string {
   if (typeTexts.size === 0) return body;
   const ts: typeof TypeScript = loadTypeScript();
   const sourceFile = ts.createSourceFile('model.ts', body, ts.ScriptTarget.Latest, true);
@@ -172,6 +206,9 @@ function replacePropertyTypes(body: string, typeTexts: ReadonlyMap<string, strin
     const name = ts.isIdentifier(member.name) || ts.isStringLiteral(member.name) ? member.name.text : member.name.getText(sourceFile);
     const text = typeTexts.get(name);
     if (text !== undefined) replacements.push({ start: member.type.getStart(sourceFile), end: member.type.getEnd(), text });
+    if (requiredNames.has(name) && member.questionToken) {
+      replacements.push({ start: member.questionToken.getStart(sourceFile), end: member.questionToken.getEnd(), text: '' });
+    }
   }
   let result = body;
   for (const { start, end, text } of replacements.sort((a, b) => b.start - a.start)) {

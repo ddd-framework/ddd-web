@@ -60,10 +60,14 @@ export function buildEndpointNameFromPath(method: string, path: string, stripPat
  * `operationId`, and the request body schemas titled `requestBody`. The document passed in stays unchanged. Two
  * operations with the same name are an error naming both.
  */
-export function prepareDocumentForEndpoints(doc: OpenApiDocument, options: EndpointOptions): OpenApiDocument {
+export function prepareDocumentForEndpoints(
+  doc: OpenApiDocument,
+  options: EndpointOptions,
+): { doc: OpenApiDocument; endpointNamesByPlaceholder: Map<string, string> } {
   const naming = options.naming ?? 'rtk';
   const bodyArg = options.bodyArg ?? 'rtk';
-  if (naming === 'rtk' && bodyArg === 'rtk') return doc;
+  const endpointNamesByPlaceholder = new Map<string, string>();
+  if (naming === 'rtk' && bodyArg === 'rtk') return { doc, endpointNamesByPlaceholder };
   const prepared = structuredClone(doc) as OpenApiDocument;
   const pathByName = new Map<string, string>();
   for (const [path, item] of Object.entries(prepared.paths ?? {})) {
@@ -82,12 +86,37 @@ export function prepareDocumentForEndpoints(doc: OpenApiDocument, options: Endpo
           throw new SdkGenerationError(`endpoints.naming: ${other} and ${method.toUpperCase()} ${path} are both named "${name}".`);
         }
         pathByName.set(name, `${method.toUpperCase()} ${path}`);
-        operation.operationId = name;
+        // RTK codegen camel-cases an operationId again (`…LegacyDB` → `…LegacyDb`): a placeholder it keeps as it is
+        // goes in, and the name replaces it in the generated code ({@link restoreEndpointNames})
+        const placeholder = `dddEndpoint${endpointNamesByPlaceholder.size}`;
+        endpointNamesByPlaceholder.set(placeholder, name);
+        operation.operationId = placeholder;
       }
       if (bodyArg === REQUEST_BODY_ARG) titleRequestBody(operation);
     }
   }
-  return prepared;
+  return { doc: prepared, endpointNamesByPlaceholder };
+}
+
+/**
+ * The generated code and the operation of each endpoint with the endpoint names in place of their placeholders: the
+ * endpoint key (`dddEndpoint3`), and capitalised inside identifiers (`useDddEndpoint3Query`, `DddEndpoint3ApiArg`).
+ */
+export function restoreEndpointNames<Location>(
+  code: string,
+  locations: Map<string, Location>,
+  endpointNamesByPlaceholder: ReadonlyMap<string, string>,
+): { code: string; locations: Map<string, Location> } {
+  if (endpointNamesByPlaceholder.size === 0) return { code, locations };
+  const restore = (text: string): string =>
+    text.replace(/(d|D)ddEndpoint(\d+)(?!\d)/g, (match, first: string, number: string) => {
+      const name = endpointNamesByPlaceholder.get(`dddEndpoint${number}`);
+      if (name === undefined) return match;
+      return first === 'D' ? upperFirst(name) : name;
+    });
+  const restoredLocations = new Map<string, Location>();
+  for (const [key, location] of locations) restoredLocations.set(restore(key), location);
+  return { code: restore(code), locations: restoredLocations };
 }
 
 /** RTK codegen names the body argument after a body schema's title when the schema is no `$ref`. */

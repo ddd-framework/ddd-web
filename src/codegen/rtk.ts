@@ -78,13 +78,20 @@ export async function runRtkCodegen(
   index: OperationIndex,
   specFile: string,
   prettierConfigFile: string | undefined,
+  /** The endpoint name your matchers see for an RTK operation name (the `endpoints.naming` placeholders); default as is. */
+  endpointNameOf: (rtkName: string) => string = (rtkName) => rtkName,
 ): Promise<RtkCodegenResult> {
   fs.writeFileSync(specFile, JSON.stringify(doc));
 
   const passthrough: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(api.config)) if (!OWN_KEYS.has(key)) passthrough[key] = value;
 
-  const userOverrides = (passthrough.endpointOverrides as EndpointOverride[] | undefined) ?? [];
+  // your `endpointOverrides` and `filterEndpoints` match the endpoint names you configured, never a placeholder
+  const userOverrides = ((passthrough.endpointOverrides as EndpointOverride[] | undefined) ?? []).map((override) =>
+    override.pattern === undefined
+      ? override
+      : { ...override, pattern: (name: string, definition: RtkOperationDefinition) => matches(override.pattern, endpointNameOf(name), definition) },
+  );
   const endpointOverrides = mergeEndpointOverrides(userOverrides, endpointTypeOverrides(index));
 
   const suffix = typeof passthrough.operationNameSuffix === 'string' ? passthrough.operationNameSuffix : '';
@@ -93,7 +100,7 @@ export async function runRtkCodegen(
   const filterEndpoints = (name: string, definition: RtkOperationDefinition): boolean => {
     const included =
       !index.skippedTwins.has(operationKey(definition.verb, definition.path)) &&
-      (userFilter === undefined || matches(userFilter, name, definition));
+      (userFilter === undefined || matches(userFilter, endpointNameOf(name), definition));
     if (included) {
       // Same key RTK codegen writes for the endpoint (`generateEndpoint`'s operationName).
       locations.set(suffix ? capitalize(name + suffix) : name, { method: definition.verb as HttpMethod, path: definition.path });

@@ -10,7 +10,7 @@ import {
   type ResolvedApi,
   type SdkConfig,
 } from './config';
-import { prepareDocumentForEndpoints } from './document-endpoints';
+import { prepareDocumentForEndpoints, restoreEndpointNames } from './document-endpoints';
 import { prepareDocumentForModels } from './document-models';
 import { buildEnhancedEndpoints } from './enhance';
 import { parseApiEndpoints } from './endpoints';
@@ -141,6 +141,7 @@ export async function generateSdk(options: GenerateSdkOptions = {}): Promise<Gen
   if (steps.length < pipeline.length) files.seedFromDisk(modelsDir);
   const prettierConfigFile = await findPrettierConfigFile(loaded.rootDir);
   const constsByFile = new Map<string, Map<string, string>>();
+  const uniqueNameByPath = new Map<string, string>();
   const specDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ddd-web-spec-'));
 
   try {
@@ -152,8 +153,11 @@ export async function generateSdk(options: GenerateSdkOptions = {}): Promise<Gen
 
       const modelOptions = loaded.config.models ?? {};
       const prepared = prepareDocumentForModels(doc, modelOptions);
-      const rtkDoc = prepareDocumentForEndpoints(prepared.doc, loaded.config.endpoints ?? {});
-      const rtk = await runRtkCodegen(api, rtkDoc, index, path.join(specDir, `${i}.json`), prettierConfigFile);
+      const preparedEndpoints = prepareDocumentForEndpoints(prepared.doc, loaded.config.endpoints ?? {});
+      const generated = await runRtkCodegen(api, preparedEndpoints.doc, index, path.join(specDir, `${i}.json`), prettierConfigFile, (rtkName) =>
+        preparedEndpoints.endpointNamesByPlaceholder.get(rtkName) ?? rtkName,
+      );
+      const rtk = restoreEndpointNames(generated.code, generated.locations, preparedEndpoints.endpointNamesByPlaceholder);
       const endpoints = parseApiEndpoints(rtk.code, logger, rtk.locations);
       const handlerEndpoints = detectResponseHandlerEndpoints(doc, endpoints, api.responseHandlers);
       const responseKinds = new Map<string, 'text' | 'blob'>();
@@ -180,6 +184,9 @@ export async function generateSdk(options: GenerateSdkOptions = {}): Promise<Gen
         documentModels: prepared.documentModels,
         enumConsts: modelOptions.enums === 'const',
         constsByFile,
+        modelOptions,
+        writeIndex: modelOptions.index !== false,
+        uniqueNameByPath,
       });
       if (!write) continue;
       const withHandlers = injectResponseHandlers(apiSource, handlerEndpoints);

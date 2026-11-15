@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.11.0
+
+### Added
+- `models.index: false`: no barrel `index.ts`; the api file imports every model by its path.
+- `models.enumPropertyType: 'wide'`: an enum property typed from the plain const object (`string` in effect) instead
+  of the Strict one (default `strict`, as in 0.9.0).
+- `models.objectType: 'const'`: a string `objectType` gets the one-value const of its schema name
+  (`App_Domain_X: "App\\Domain\\X"`) and is required.
+
+### Changed
+- `models.naming: 'document'`: every model file exports its own schema's name, also when another folder holds the
+  same name (before: qualified, `MoneyCurrency`); an importer aliases it, the barrel leaves such a name out (it broke
+  the closing type check with a duplicate export), the api file imports each model by its path.
+- Enum const keys camel-case a dash (`gpt-realtime` → `gptRealtime`).
+- `endpoints.naming`: the built name is used verbatim — RTK codegen no longer camel-cases it a second time
+  (`…FromLegacyDB` stayed `…FromLegacyDb`); `filterEndpoints` and `endpointOverrides` match the built name.
+
+### Fixed
+- An enum declared on an array schema stays an array (`Array<…>`).
+
 ## 0.10.0
 
 ### Added

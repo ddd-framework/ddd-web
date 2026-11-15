@@ -4,7 +4,7 @@ import type { OutputFiles } from './files';
 import type { Logger } from './log';
 import type { NamespacePath } from './registry';
 import { DDD_WEB_API_IMPORT } from './response-handlers';
-import { applyEnumConsts, findDocumentModel, placeDocumentModel, type DocumentModel } from './document-models';
+import { applyEnumConsts, findDocumentModel, placeDocumentModel, type DocumentModel, type ModelOptions } from './document-models';
 import { loadTypeScript } from './typescript';
 
 interface Declaration {
@@ -168,6 +168,12 @@ export interface ExtractModelsInput {
   enumConsts?: boolean;
   /** Enum const objects per model file, shared by every api of one run (a file merged across apis keeps them all). */
   constsByFile?: Map<string, Map<string, string>>;
+  /** The `enumPropertyType` and `objectType` model options for the enum consts. */
+  modelOptions?: Pick<ModelOptions, 'enumPropertyType' | 'objectType'>;
+  /** `false` (`models.index`): no barrel; the api file imports every model by its path. Default `true`. */
+  writeIndex?: boolean;
+  /** The unique name of each model file (lower-case path), shared by every api of one run. */
+  uniqueNameByPath?: Map<string, string>;
 }
 
 /**
@@ -218,10 +224,15 @@ export function extractModels(input: ExtractModelsInput): string {
   const documentModelByNewName = new Map<string, DocumentModel>();
   const targetByNewName = new Map<string, string>();
   const nameByPath = new Map<string, string>();
+  // a document model's file exports its own schema's name; the unique name only wires the api file and the importers,
+  // which alias it where the name repeats in another folder
+  const exportNameByUniqueName = new Map<string, string>();
+  const uniqueNameByPath = input.uniqueNameByPath ?? new Map<string, string>();
   for (const oldName of originalNames) {
     const { filePath, leafName, segments } = placement(oldName);
     const pathKey = path.resolve(filePath).toLowerCase();
-    let name = nameByPath.get(pathKey) ?? files.get(filePath)?.match(EXPORTED_NAME)?.[1];
+    const isDocumentModel = findDocumentModel(oldName, documentModels) !== null;
+    let name = nameByPath.get(pathKey) ?? uniqueNameByPath.get(pathKey) ?? (isDocumentModel ? undefined : files.get(filePath)?.match(EXPORTED_NAME)?.[1]);
     if (!name) {
       const owner = (candidate: string): string | undefined => nameOwners.get(candidate);
       name = leafName;
@@ -229,10 +240,12 @@ export function extractModels(input: ExtractModelsInput): string {
         name = segments.slice(-depth).join('') + leafName;
       }
       if (owner(name) !== undefined && owner(name) !== pathKey) name = oldName;
-      if (name !== leafName) logger.info(`  ${oldName}: leaf name ${leafName} is taken — exported as ${name}`);
+      if (name !== leafName && !isDocumentModel) logger.info(`  ${oldName}: leaf name ${leafName} is taken — exported as ${name}`);
     }
     nameOwners.set(name, pathKey);
     nameByPath.set(pathKey, name);
+    uniqueNameByPath.set(pathKey, name);
+    exportNameByUniqueName.set(name, isDocumentModel ? leafName : name);
     renameMap.set(oldName, name);
     targetByNewName.set(name, filePath);
     const documentModel = findDocumentModel(oldName, documentModels);
@@ -269,18 +282,28 @@ export function extractModels(input: ExtractModelsInput): string {
   const isPresentation = (filePath: string): boolean => filePath.split(path.sep).includes('Presentation');
   const barrelEntries: string[] = [];
 
-  for (const { name, body, filePath } of entries) {
+  const exportNameOf = (uniqueName: string): string => exportNameByUniqueName.get(uniqueName) ?? uniqueName;
+  const writeIndex = input.writeIndex !== false;
+  for (const { name: uniqueName, body: uniqueBody, filePath } of entries) {
     const dependencies = new Set<string>();
     if (dependencyRegex) {
-      for (const match of body.matchAll(new RegExp(dependencyRegex.source, 'g'))) {
-        if (match[1] && match[1] !== name) dependencies.add(match[1]);
+      for (const match of uniqueBody.matchAll(new RegExp(dependencyRegex.source, 'g'))) {
+        if (match[1] && match[1] !== uniqueName) dependencies.add(match[1]);
       }
     }
-    const kind = kindByName.get(name);
+    // the file's own name and the local name of each import: a dependency whose unique name is this file's own name
+    // is imported under an alias
+    const name = exportNameOf(uniqueName);
+    const localNameOf = new Map<string, string>();
+    for (const dependency of dependencies) localNameOf.set(dependency, dependency === name ? `${dependency}Ref` : dependency);
+    const renames = new Map<string, string>([[uniqueName, name], ...[...localNameOf].filter(([dependency, local]) => dependency !== local)]);
+    const renameInBody = alternation([...renames.keys()].filter((key) => renames.get(key) !== key));
+    const body = renameInBody ? uniqueBody.replace(renameInBody, (_, found: string) => renames.get(found) ?? found) : uniqueBody;
+    const kind = kindByName.get(uniqueName);
     let typedBody = body;
-    const documentModel = documentModelByNewName.get(name);
+    const documentModel = documentModelByNewName.get(uniqueName);
     if (input.enumConsts && documentModel) {
-      const applied = applyEnumConsts(body, name, documentModel.schema);
+      const applied = applyEnumConsts(body, name, documentModel, input.modelOptions);
       typedBody = applied.body;
       const fileKey = path.resolve(filePath).toLowerCase();
       const fileConsts = constsByFile.get(fileKey) ?? new Map<string, string>();
@@ -299,9 +322,11 @@ export function extractModels(input: ExtractModelsInput): string {
     }
     const importLines = [
       ...(kind === 'blob' ? [`import type { DddFileResponse } from '${DDD_WEB_API_IMPORT}';`] : []),
-      ...[...dependencies].map(
-        (dependency) => `import { ${dependency} } from '${importSpecifier(filePath, pathByName.get(dependency)!, esm)}';`,
-      ),
+      ...[...dependencies].map((dependency) => {
+        const exported = exportNameOf(dependency);
+        const local = localNameOf.get(dependency) ?? dependency;
+        return `import { ${exported === local ? local : `${exported} as ${local}`} } from '${importSpecifier(filePath, pathByName.get(dependency)!, esm)}';`;
+      }),
     ].join('\n');
 
     const existing = files.isGeneratedThisRun(filePath) ? files.get(filePath) : undefined;
@@ -313,10 +338,12 @@ export function extractModels(input: ExtractModelsInput): string {
     files.set(filePath, fileConsts ? withEnumConsts(content, name, [...fileConsts.values()]) : content);
 
     if (isPresentation(path.relative(modelsDir, filePath))) continue;
+    // a name another folder holds too stays out of the barrel (two `export *` of one name break it)
+    if (name !== uniqueName) continue;
     barrelEntries.push(`export * from '${importSpecifier(indexPath, filePath, esm)}';`);
   }
 
-  writeBarrel(files, indexPath, barrelEntries);
+  if (writeIndex) writeBarrel(files, indexPath, barrelEntries);
 
   const others = entries.filter((entry) => path.relative(modelsDir, entry.filePath).split(path.sep)[0] === '_others');
   if (others.length > 0) {
@@ -324,6 +351,14 @@ export function extractModels(input: ExtractModelsInput): string {
   }
   logger.info(`  extracted ${entries.length} types`);
 
+  // the api file imports each model by its path when there is no barrel or a model is missing from it
+  if (!writeIndex || usedInApi.some((usedName) => exportNameOf(usedName) !== usedName) || documentModels.size > 0) {
+    const importLines = usedInApi.map((usedName) => {
+      const exported = exportNameOf(usedName);
+      return `import { ${exported === usedName ? usedName : `${exported} as ${usedName}`} } from '${importSpecifier(input.apiFilePath, pathByName.get(usedName)!, esm)}';`;
+    });
+    return `${importLines.join('\n')}\n\n${strippedSource}`;
+  }
   const modelsImport = esm
     ? importSpecifier(input.apiFilePath, indexPath, true)
     : importSpecifier(input.apiFilePath, indexPath, false).replace(/\/index$/, '');
