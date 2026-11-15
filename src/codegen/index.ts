@@ -5,6 +5,7 @@ export type {
   InvalidationResolver,
   InvalidationTag,
   LoadedConfig,
+  ModelOptions,
   OperationMatcher,
   ResponseHandlerOverride,
   SdkApiConfig,

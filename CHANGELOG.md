@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.9.0
+
+### Added
+- Codegen option `models` (every option off by default, output unchanged without it):
+  - `naming: 'document'`: a model is named by the last dot segment of its schema name, unchanged
+    (`AIConversationMessage`, not `AiConversationMessage`), and placed in the folders of the segments before it; a
+    neighbour namespace that prefixes the name never splits it (`…Messages.DelegationResults` stays
+    `Messages/DelegationResults.ts` beside `Messages/Delegation/`).
+  - `enums: 'const'` (with `naming: 'document'`): an enum property becomes `export const <Model><Property>` and
+    `<Model><Property>Strict` (`as const`) in its model's file, the property typed from the Strict object
+    (`| null` when nullable, `Array<…>` for an enum of array items).
+  - `nullableRefs: true`: `| null` beside a nullable `$ref`.
+  - `idType: 'number' | 'string'`: the type of an `id` declared `string | integer`.
+
 ## 0.8.0
 
 ### Added

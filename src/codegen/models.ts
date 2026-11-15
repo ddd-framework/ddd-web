@@ -4,6 +4,7 @@ import type { OutputFiles } from './files';
 import type { Logger } from './log';
 import type { NamespacePath } from './registry';
 import { DDD_WEB_API_IMPORT } from './response-handlers';
+import { applyEnumConsts, findDocumentModel, placeDocumentModel, type DocumentModel } from './document-models';
 import { loadTypeScript } from './typescript';
 
 interface Declaration {
@@ -161,6 +162,12 @@ export interface ExtractModelsInput {
    * `DddFileResponse` (imported from the package's `api` entry). Every other type stays as RTK generated it.
    */
   responseKinds?: ReadonlyMap<string, 'text' | 'blob'>;
+  /** RTK type name → component schema (`naming: 'document'`): such a model is named and placed by its schema name. */
+  documentModels?: ReadonlyMap<string, DocumentModel>;
+  /** `enums: 'const'`: the enum const objects of a document model go into its file. */
+  enumConsts?: boolean;
+  /** Enum const objects per model file, shared by every api of one run (a file merged across apis keeps them all). */
+  constsByFile?: Map<string, Map<string, string>>;
 }
 
 /**
@@ -188,7 +195,15 @@ export function extractModels(input: ExtractModelsInput): string {
     if (name && !nameOwners.has(name)) nameOwners.set(name, path.resolve(filePath).toLowerCase());
   }
 
+  const documentModels = input.documentModels ?? new Map<string, DocumentModel>();
+  const constsByFile = input.constsByFile ?? new Map<string, Map<string, string>>();
   const placement = (oldName: string): { filePath: string; leafName: string; segments: string[] } => {
+    const documentModel = findDocumentModel(oldName, documentModels);
+    if (documentModel) {
+      const { segments, leafName } = placeDocumentModel(documentModel.model);
+      const planned = path.join(modelsDir, ...segments, `${leafName}${documentModel.suffix}.ts`);
+      return { filePath: files.findPath(planned) ?? planned, leafName: `${leafName}${documentModel.suffix}`, segments };
+    }
     const match = registryMatch(oldName, registry);
     if (match) {
       const planned = path.join(modelsDir, ...match.segments, `${match.leafName}.ts`);
@@ -200,6 +215,7 @@ export function extractModels(input: ExtractModelsInput): string {
 
   const originalNames = exportedTypeDeclarations(input.apiSource).map((declaration) => declaration.name);
   const renameMap = new Map<string, string>();
+  const documentModelByNewName = new Map<string, DocumentModel>();
   const targetByNewName = new Map<string, string>();
   const nameByPath = new Map<string, string>();
   for (const oldName of originalNames) {
@@ -219,6 +235,8 @@ export function extractModels(input: ExtractModelsInput): string {
     nameByPath.set(pathKey, name);
     renameMap.set(oldName, name);
     targetByNewName.set(name, filePath);
+    const documentModel = findDocumentModel(oldName, documentModels);
+    if (documentModel && documentModel.suffix === '') documentModelByNewName.set(name, documentModel.model);
   }
 
   const renameRegex = alternation([...renameMap.keys()]);
@@ -260,6 +278,15 @@ export function extractModels(input: ExtractModelsInput): string {
     }
     const kind = kindByName.get(name);
     let typedBody = body;
+    const documentModel = documentModelByNewName.get(name);
+    if (input.enumConsts && documentModel) {
+      const applied = applyEnumConsts(body, name, documentModel.schema);
+      typedBody = applied.body;
+      const fileKey = path.resolve(filePath).toLowerCase();
+      const fileConsts = constsByFile.get(fileKey) ?? new Map<string, string>();
+      for (const [constName, text] of applied.consts) fileConsts.set(constName, text);
+      if (fileConsts.size > 0) constsByFile.set(fileKey, fileConsts);
+    }
     if (kind === 'text') {
       // Text-response endpoints come out of RTK as `= /** status 200 */ {}`; `string` is what arrives. A forced text
       // handler on a JSON-declared response replaces the whole type.
@@ -282,7 +309,8 @@ export function extractModels(input: ExtractModelsInput): string {
       existing !== undefined
         ? mergeModel(existing, typedBody, importLines, name, logger)
         : (importLines ? `${importLines}\n\n` : '') + `${typedBody}\n\nexport default ${name};\n`;
-    files.set(filePath, content);
+    const fileConsts = constsByFile.get(path.resolve(filePath).toLowerCase());
+    files.set(filePath, fileConsts ? withEnumConsts(content, name, [...fileConsts.values()]) : content);
 
     if (isPresentation(path.relative(modelsDir, filePath))) continue;
     barrelEntries.push(`export * from '${importSpecifier(indexPath, filePath, esm)}';`);
@@ -323,4 +351,13 @@ function writeBarrel(files: OutputFiles, indexPath: string, newEntries: string[]
     merged.push(entry);
   }
   files.set(indexPath, `${merged.join('\n')}\n`);
+}
+
+/** The model file with its enum const objects before the default export (a merged file loses them; they come back). */
+function withEnumConsts(content: string, name: string, constTexts: string[]): string {
+  const defaultExport = `export default ${name};`;
+  const withoutConsts = content.replace(/\nexport const \w+ = \{[\s\S]*?\n\}(?: as const)?;\n/g, '\n');
+  const at = withoutConsts.lastIndexOf(defaultExport);
+  const head = (at >= 0 ? withoutConsts.slice(0, at) : withoutConsts).replace(/\s+$/, '');
+  return `${head}\n\n${constTexts.join('\n\n')}\n\n${defaultExport}\n`;
 }

@@ -10,6 +10,7 @@ import {
   type ResolvedApi,
   type SdkConfig,
 } from './config';
+import { prepareDocumentForModels } from './document-models';
 import { buildEnhancedEndpoints } from './enhance';
 import { parseApiEndpoints } from './endpoints';
 import { OutputFiles } from './files';
@@ -138,6 +139,7 @@ export async function generateSdk(options: GenerateSdkOptions = {}): Promise<Gen
   // Only needed when a contributing spec could not be loaded: its models stay as they are on disk.
   if (steps.length < pipeline.length) files.seedFromDisk(modelsDir);
   const prettierConfigFile = await findPrettierConfigFile(loaded.rootDir);
+  const constsByFile = new Map<string, Map<string, string>>();
   const specDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ddd-web-spec-'));
 
   try {
@@ -147,7 +149,9 @@ export async function generateSdk(options: GenerateSdkOptions = {}): Promise<Gen
       const index = indexOperations(doc, api.sideEffects, api.skipUpdatePostTwins);
       if (index.skippedTwins.size > 0) logger.info(`  skipping ${index.skippedTwins.size} POST twin(s) of PATCH upserts`);
 
-      const rtk = await runRtkCodegen(api, doc, index, path.join(specDir, `${i}.json`), prettierConfigFile);
+      const modelOptions = loaded.config.models ?? {};
+      const prepared = prepareDocumentForModels(doc, modelOptions);
+      const rtk = await runRtkCodegen(api, prepared.doc, index, path.join(specDir, `${i}.json`), prettierConfigFile);
       const endpoints = parseApiEndpoints(rtk.code, logger, rtk.locations);
       const handlerEndpoints = detectResponseHandlerEndpoints(doc, endpoints, api.responseHandlers);
       const responseKinds = new Map<string, 'text' | 'blob'>();
@@ -171,6 +175,9 @@ export async function generateSdk(options: GenerateSdkOptions = {}): Promise<Gen
         logger,
         esm,
         responseKinds,
+        documentModels: prepared.documentModels,
+        enumConsts: modelOptions.enums === 'const',
+        constsByFile,
       });
       if (!write) continue;
       const withHandlers = injectResponseHandlers(apiSource, handlerEndpoints);

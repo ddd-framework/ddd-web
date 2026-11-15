@@ -50,6 +50,7 @@ too). A plain RTK-codegen file with `export const apis = [...]` is accepted as w
 | `invalidation` | `(operation: InvalidationOperation) => InvalidationTag[] \| undefined`: overrides the tags a mutation invalidates; `undefined` keeps the default. `broadInvalidation` (exported) restores the 0.2 behaviour. See section 3. |
 | `workspace` | `{ envVar, envFiles?, urlKeys?, prompt? }`: resolves a workspace / subdomain value (CLI `--workspace` → env → URL sniffed from `.env` / `.env.local` → TTY prompt) into `process.env[envVar]` before the config is evaluated again. |
 | `tsconfig` | tsconfig of the final type check. Default `tsconfig.json` next to the config. |
+| `models` | How the models of the component schemas are written; every option off by default. `naming: 'document'`: the model is named by the schema name's last dot segment exactly (`AIConversationMessage`, not `AiConversationMessage`), the segments before it are its folders — a neighbour namespace that prefixes the name never splits it. `enums: 'const'` (needs `naming: 'document'`): an enum property becomes `export const <Model><Property> = {…}` and `<Model><Property>Strict = {…} as const` in the model's file, the property typed `(typeof XStrict)[keyof typeof XStrict]` (`\| null` when nullable; `Array<…>` for an enum of array items); keys are the values with spaces, `/`, `\` as `_`, `""` as `EMPTY`. `nullableRefs: true`: `\| null` beside a nullable `$ref`. `idType: 'number' \| 'string'`: an `id` declared `string \| integer` gets that type. |
 
 ```ts
 export default defineConfig({

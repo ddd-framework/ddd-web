@@ -1,7 +1,10 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { createJiti } from 'jiti';
+import type { ModelOptions } from './document-models';
 import type { DddEntityExtension, HttpMethod, OpenApiOperation } from './openapi';
+
+export type { ModelOptions } from './document-models';
 
 /** Selects operations by HTTP method (optional, case-insensitive) and path (exact string or RegExp). */
 export interface OperationMatcher {
@@ -151,6 +154,12 @@ export interface SdkConfig {
    */
   invalidation?: InvalidationResolver;
   workspace?: WorkspaceOptions;
+  /**
+   * How the models of the component schemas are written: names and folders as the document writes them, enums as
+   * const objects, `| null` beside a nullable `$ref`, the `id` type. Every option is off by default (see
+   * {@link ModelOptions}).
+   */
+  models?: ModelOptions;
   /** tsconfig used for the final type check. Default `tsconfig.json` next to the config file. */
   tsconfig?: string;
 }
@@ -214,6 +223,9 @@ export function resolveApis(loaded: LoadedConfig): ResolvedApi[] {
   const { config, rootDir } = loaded;
   if (!Array.isArray(config.apis) || config.apis.length === 0) {
     throw new Error(`No apis configured in ${loaded.configPath}.`);
+  }
+  if (config.models?.enums === 'const' && config.models.naming !== 'document') {
+    throw new Error(`models.enums 'const' needs models.naming 'document' (${loaded.configPath}).`);
   }
   return config.apis.map((entry, index) => {
     for (const key of ['schemaFile', 'apiFile', 'outputFile'] as const) {
