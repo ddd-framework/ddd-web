@@ -385,6 +385,8 @@ export default defineConfig({ plugins: [react(), dddFetchApiRequestPlugin()] });
   toolkit's query module. The page's own scripts keep their `Request`.
 - The build fails when the toolkit's query module is in the build but not bound, so a toolkit update cannot silently
   bring the defect back.
+- The package's exports are import-only: load the plugin from an ESM Vite config (`vite.config.ts` / `.mjs` in a
+  `"type": "module"` package); a CommonJS config does not resolve it.
 - The plugin covers builds only, watch builds included. The dev server pre-bundles the toolkit untransformed, so for
   such a page use a built bundle.
 - `FetchApiRequest` / `resolveFetchApiRequest()` use the page's constructor when it is genuine. Otherwise they use the
