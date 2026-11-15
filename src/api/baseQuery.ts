@@ -11,6 +11,7 @@ import type { DddTokens } from '../auth/types';
 import { applyDebugParams, readDebugFlags, type DddDebugOptions } from './debug';
 import { buildDddFormData, type DddMultipartFiles } from './multipart';
 import { createDddRefresh, type DddRawBaseQuery, type DddRefreshFn, type DddReloginFn } from './refresh';
+import { isFetchApiRequest } from '../fetch-api-request';
 
 type MaybePromise<T> = T | Promise<T>;
 
@@ -220,6 +221,23 @@ const withBearer = (args: FetchArgs, accessToken: string | null | undefined): Fe
   return { ...args, headers };
 };
 
+/** Error text of a request RTK built with a global `Request` that is not the Fetch API's. */
+export const DDD_FOREIGN_GLOBAL_REQUEST_MESSAGE =
+  "ddd-web: the request was not sent. RTK Query built it with the global `Request`, which on this page is not the Fetch API's " +
+  '(MooTools or Prototype replace it). Hand the toolkit `FetchApiRequest` from `@mgamadeus/ddd-web/fetch-api-request` ' +
+  '(`dddFetchApiRequestPlugin()` from `@mgamadeus/ddd-web/vite`).';
+
+/**
+ * Wraps a `fetchFn`: an object that is neither a Fetch API request nor a URL is refused with
+ * {@link DDD_FOREIGN_GLOBAL_REQUEST_MESSAGE} (a `FETCH_ERROR`) instead of being sent to `<page>/[object Object]`.
+ */
+export const guardFetchApiRequest =
+  (fetchFn: (input: RequestInfo, init?: RequestInit) => Promise<Response>) =>
+  (input: RequestInfo, init?: RequestInit): Promise<Response> =>
+    typeof input === 'string' || input instanceof URL || isFetchApiRequest(input)
+      ? fetchFn(input, init)
+      : Promise.reject(new TypeError(DDD_FOREIGN_GLOBAL_REQUEST_MESSAGE));
+
 /**
  * Binds a request to a session: the base query sends it, and repeats it after a refresh, only while
  * `expectedSessionKey` is the key of the current session ({@link DddBaseQueryOptions.getSessionKey}). The key travels
@@ -279,6 +297,7 @@ export function createDddBaseQuery(options: DddBaseQueryOptions): DddUploadingBa
   const fetchQuery = fetchBaseQuery({
     paramsSerializer: dddParamsSerializer,
     ...fetchOptions,
+    fetchFn: guardFetchApiRequest(fetchOptions?.fetchFn ?? ((input, init) => fetch(input, init))),
     baseUrl: options.baseUrl,
     prepareHeaders: async (headers, context) => {
       const language = languageCode?.(context);

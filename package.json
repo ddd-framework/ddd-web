@@ -1,6 +1,6 @@
 {
   "name": "@mgamadeus/ddd-web",
-  "version": "0.6.2",
+  "version": "0.7.0",
   "description": "TypeScript web client for backends built with mgamadeus/ddd, the DDD entity framework for Symfony and Doctrine (Composer/Packagist). Generates a typed RTK Query SDK from the backend's OpenAPI document, builds DDD QueryOptions (filters, orderBy, expand, select, paging) and handles JWT auth with token refresh.",
   "keywords": [
     "ddd",
@@ -44,6 +44,14 @@
     "./auth": {
       "types": "./dist/auth/index.d.ts",
       "import": "./dist/auth/index.js"
+    },
+    "./fetch-api-request": {
+      "types": "./dist/fetch-api-request/index.d.ts",
+      "import": "./dist/fetch-api-request/index.js"
+    },
+    "./vite": {
+      "types": "./dist/vite/index.d.ts",
+      "import": "./dist/vite/index.js"
     },
     "./codegen": {
       "types": "./dist/codegen/index.d.ts",

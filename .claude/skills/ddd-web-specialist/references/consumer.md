@@ -10,6 +10,7 @@
 6. Tokens (`/auth`)
 7. Contract helpers (`/contract`)
 8. Agent skills (`link-skills`)
+5a. Pages with a foreign global `Request` (`/fetch-api-request`, `/vite`)
 9. Troubleshooting
 
 ## 1. Configuration (`openapi-config.ts`)
@@ -364,6 +365,37 @@ contentType }` instead; `downloadBlob`, `filenameFromContentDisposition` (RFC 59
 handlers. Apps without a generated auth endpoint: `createAuthEndpoints(api, { loginPath, refreshPath })` injects
 `authLogin` / `authRefresh`.
 
+## 5a. Pages with a foreign global `Request` (`/fetch-api-request`, `/vite`)
+
+RTK Query's `fetchBaseQuery` builds every request with the GLOBAL `Request`. Pages that load MooTools 1.x or Prototype
+replace `window.Request` with their Ajax class, and RTK offers no option that names another constructor. In such a page
+the base query refuses each request with a `FETCH_ERROR` whose `error` names the cause
+(`DDD_FOREIGN_GLOBAL_REQUEST_MESSAGE`, from the `fetchFn` guard `guardFetchApiRequest`). Without the guard the request
+would go to `<page>/[object Object]` and fail as `PARSING_ERROR`.
+
+The fix is a build step that hands the toolkit's query module the Fetch API's constructor:
+
+```ts
+// vite.config.ts
+import { dddFetchApiRequestPlugin } from '@mgamadeus/ddd-web/vite';
+export default defineConfig({ plugins: [react(), dddFetchApiRequestPlugin()] });
+```
+
+- The plugin prepends `import { FetchApiRequest as Request } from '@mgamadeus/ddd-web/fetch-api-request'` to the
+  toolkit's query module. The page's own scripts keep their `Request`.
+- The build fails when the toolkit's query module is in the build but not bound, so a toolkit update cannot silently
+  bring the defect back.
+- The plugin covers builds only, watch builds included. The dev server pre-bundles the toolkit untransformed, so for
+  such a page use a built bundle.
+- `FetchApiRequest` / `resolveFetchApiRequest()` use the page's constructor when it is genuine. Otherwise they use the
+  constructor of a hidden frame without an address that the module adds. The frame stays in the document and is
+  re-added if a script removed it.
+- Relative addresses are resolved against the page (`document.baseURI`). The request is still sent by the page's
+  `fetch`, with the page's cookies.
+- Other bundlers: alias `Request` in that one module the same way.
+- `isFetchApiRequest` / `isFetchApiRequestConstructor` check the `[object Request]` tag, not `instanceof`: a request from
+  the frame is no instance of the page's `Request`.
+
 ## 6. Tokens (`/auth`)
 
 - `TokenStorage` = `read()` / `write({ accessToken?, refreshToken? })` (`undefined` keeps, `null` removes) /
@@ -415,6 +447,7 @@ Idempotent; an existing symlink is repointed, a real file or directory is never 
 | `Cannot find module 'ajv/dist/core'` (or another ajv 8 module) while the generator loads | A consumer with `legacy-peer-deps` and an `ajv` 6 at the top of `node_modules`: since 0.6.2 the generator answers the parser's `ajv` from its own `ajv` 8 — update the package |
 | The type check is slow or reports errors your compiler does not | It ran another compiler: since 0.6.2 it takes the project's `typescript` through its package.json `bin` (TypeScript 7 included) and logs `Type check with TypeScript <version> (the project's compiler)` |
 | A polling read aborts with no visible reason (`subscribe: false`, `keepUnusedDataFor: 0`) | The removal timer of the previous answer removes the cache entry and aborts the next identical read. Subscribe while the read runs and unsubscribe after the answer: `const read = dispatch(api.endpoints.x.initiate(arg, { forceRefetch: true })); try { return await read.unwrap(); } finally { read.unsubscribe(); }` |
+| Every request fails with `FETCH_ERROR` "RTK Query built it with the global \`Request\`…" (before 0.7.0: `PARSING_ERROR`, HTML from `<page>/[object Object]`) | The page replaced the global `Request` (MooTools, Prototype): add `dddFetchApiRequestPlugin()` — section 5a |
 | `type check failed — previous output restored` | Fix the reported type error (often app code using a renamed hook), or `--skip-tsc` to inspect |
 | A list does not refresh after a write | `<stem>Enhanced.ts` not imported; or the write has no tag — see section 3 |
 | A screen shows stale data after a write that changes more than its own entity | Writes invalidate by identity since 0.3 — add an `invalidation` resolver for that endpoint (section 3), or `broadInvalidation` for the 0.2 behaviour |

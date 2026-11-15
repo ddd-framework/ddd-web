@@ -10,6 +10,8 @@ export {
   withDddExpectedSessionKey,
   DDD_SESSION_CHANGED,
   DDD_EXPECTED_SESSION_KEY_HEADER,
+  DDD_FOREIGN_GLOBAL_REQUEST_MESSAGE,
+  guardFetchApiRequest,
 } from './baseQuery';
 export type {
   DddBaseQuery,

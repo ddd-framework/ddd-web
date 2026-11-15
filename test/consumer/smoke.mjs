@@ -1,5 +1,5 @@
 // Installed-package smoke test: every public subpath resolves and exports something.
-const subpaths = ['contract', 'query', 'api', 'auth', 'codegen'];
+const subpaths = ['contract', 'query', 'api', 'auth', 'codegen', 'fetch-api-request', 'vite'];
 for (const subpath of subpaths) {
   const module = await import(`@mgamadeus/ddd-web/${subpath}`);
   if (Object.keys(module).length === 0 && subpath !== 'contract') {

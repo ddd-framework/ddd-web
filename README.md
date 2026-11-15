@@ -48,7 +48,8 @@ pnpm exec ddd-web-sdk            # generate the SDK
 pnpm exec ddd-web link-skills    # link the package's agent skills into .claude/skills
 ```
 
-Subpaths: `@mgamadeus/ddd-web/codegen`, `/query`, `/api`, `/auth`, `/contract`.
+Subpaths: `@mgamadeus/ddd-web/codegen`, `/query`, `/api`, `/auth`, `/contract`, `/fetch-api-request` and `/vite`
+(pages whose global `Request` is not the Fetch API's, e.g. MooTools or Prototype: `dddFetchApiRequestPlugin()`).
 
 ### File downloads
 

@@ -3,6 +3,8 @@
 import { createDddBaseQuery, getErrorMessage, type DddBaseQuery, type DddNormalizedError } from '@mgamadeus/ddd-web/api';
 import { createMemoryTokenStorage, isExpired, type DddTokens, type TokenStorage } from '@mgamadeus/ddd-web/auth';
 import { defineConfig, type GenerateSdkOptions, type SdkConfig } from '@mgamadeus/ddd-web/codegen';
+import { FetchApiRequest, isFetchApiRequest } from '@mgamadeus/ddd-web/fetch-api-request';
+import { dddFetchApiRequestPlugin, type DddFetchApiRequestPlugin } from '@mgamadeus/ddd-web/vite';
 import { hasSideEffects, parseDddDateTime, type DddEntityInfo, type FilterOperator } from '@mgamadeus/ddd-web/contract';
 import { buildInFilter, buildQueryOptions, combineFilters, type QueryOptionsParams } from '@mgamadeus/ddd-web/query';
 import manifest from '@mgamadeus/ddd-web/package.json' with { type: 'json' };
@@ -27,3 +29,8 @@ const expired: boolean = isExpired(null);
 const version: string = manifest.version;
 
 export const used = [baseQuery, normalized, options, entity, operator, params, write, expired, parseDddDateTime('2026-01-01'), version];
+
+const fetchApiRequestPlugin: DddFetchApiRequestPlugin = dddFetchApiRequestPlugin();
+const fetchApiRequestIsGenuine: boolean = isFetchApiRequest(new FetchApiRequest('https://api.test/x'));
+void fetchApiRequestPlugin;
+void fetchApiRequestIsGenuine;

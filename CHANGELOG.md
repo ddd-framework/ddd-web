@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.7.0
+
+### Added
+- `@mgamadeus/ddd-web/fetch-api-request`: `FetchApiRequest`, `resolveFetchApiRequest()`, `isFetchApiRequest`,
+  `isFetchApiRequestConstructor`. They provide the Fetch API's `Request` constructor in pages whose global `Request` was
+  replaced (MooTools 1.x, Prototype), taking it from a hidden frame when the page's constructor is not genuine.
+- `@mgamadeus/ddd-web/vite`: `dddFetchApiRequestPlugin()` binds the `Request` of RTK Query's `fetchBaseQuery` to
+  `FetchApiRequest` in builds, and fails the build when the toolkit's query module stays unbound.
+
+### Fixed
+- `createDddBaseQuery`: in such a page a request is refused with a `FETCH_ERROR` that names the cause
+  (`DDD_FOREIGN_GLOBAL_REQUEST_MESSAGE`). Before, it was sent to `<page>/[object Object]` and failed as `PARSING_ERROR`.
+  Your own `fetchOptions.fetchFn` is wrapped by the same check (`guardFetchApiRequest`).
+
 ## 0.6.2
 
 ### Fixed
