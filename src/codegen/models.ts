@@ -174,6 +174,8 @@ export interface ExtractModelsInput {
   writeIndex?: boolean;
   /** The unique name of each model file (lower-case path), shared by every api of one run. */
   uniqueNameByPath?: Map<string, string>;
+  /** Write the models only: the argument and response types of the endpoints (`_endpoints/`) are left out. */
+  modelsOnly?: boolean;
 }
 
 /**
@@ -266,6 +268,7 @@ export function extractModels(input: ExtractModelsInput): string {
       logger.warn(`Re-extracted type "${name}" not in rename map — skipping.`);
       continue;
     }
+    if (input.modelsOnly && path.relative(modelsDir, filePath).split(path.sep)[0] === '_endpoints') continue;
     entries.push({ name, body: text, filePath });
   }
 
@@ -307,7 +310,8 @@ export function extractModels(input: ExtractModelsInput): string {
       typedBody = applied.body;
       const fileKey = path.resolve(filePath).toLowerCase();
       const fileConsts = constsByFile.get(fileKey) ?? new Map<string, string>();
-      for (const [constName, text] of applied.consts) fileConsts.set(constName, text);
+      // the model's first document wins for its consts too, as it does for its properties
+      for (const [constName, text] of applied.consts) if (!fileConsts.has(constName)) fileConsts.set(constName, text);
       if (fileConsts.size > 0) constsByFile.set(fileKey, fileConsts);
     }
     if (kind === 'text') {

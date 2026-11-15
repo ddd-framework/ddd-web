@@ -136,3 +136,47 @@ describe('generateSdk — models as the document writes them (models option)', (
     ).rejects.toThrow(/needs models.naming 'document'/);
   });
 });
+
+describe('generateSdk — two documents and models.scope', () => {
+  const options = { naming: 'document', enums: 'const', index: false } as const;
+
+  it('takes the enum consts of a shared model from the first-listed document, as its properties', async () => {
+    const app = createApp();
+    apps.push(app);
+    const first = specWithDocumentNames();
+    const second = specWithDocumentNames();
+    const statusOf = (doc: ReturnType<typeof specWithDocumentNames>) =>
+      ((doc.components!.schemas![`${MESSAGES}.AIConversationMessage`] as { properties: Record<string, { enum?: string[] }> }).properties.status!);
+    statusOf(second).enum = ['PENDING'];
+    await generateSdk({
+      cwd: app,
+      config: {
+        apis: [
+          apiEntry(writeSpec(app, first, 'first.json')),
+          apiEntry(writeSpec(app, second, 'second.json'), { outputFile: './src/api/clientApi.ts', exportName: 'clientApi' }),
+        ],
+        models: options,
+      },
+      logger: silentLogger,
+    });
+    const message = read(app, 'src/models/App/Domain/AI/Entities/Conversations/Messages/AIConversationMessage.ts');
+    expect(message).toContain('CANCEL_REQUESTED: "CANCEL_REQUESTED"');
+  }, 90_000);
+
+  it("writes the models of every operation with scope 'all', while the endpoint filter keeps the api file small", async () => {
+    const app = createApp();
+    apps.push(app);
+    await generateSdk({
+      cwd: app,
+      config: {
+        apis: [apiEntry(writeSpec(app, specWithDocumentNames()), { filterEndpoints: [/BooksList/] })],
+        models: { ...options, scope: 'all' },
+      },
+      logger: silentLogger,
+    });
+    expect(fs.existsSync(path.join(app, 'src/models/App/Domain/AI/Entities/Conversations/Messages/AIConversationMessage.ts'))).toBe(true);
+    const api = read(app, 'src/api/adminApi.ts');
+    expect(api).not.toMatch(/AiMessages/);
+    expect(fs.readdirSync(path.join(app, 'src/models/_endpoints')).some((file) => /AiMessages/.test(file))).toBe(false);
+  }, 90_000);
+});

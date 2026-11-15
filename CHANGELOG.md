@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.12.0
+
+### Added
+- `models.scope: 'all'`: every schema an operation of the document reaches is written, also when `filterEndpoints`
+  leaves the operation out of the api file (a models-only pass; its argument and response types are not written).
+  Default `reachable` (as before).
+
+### Fixed
+- With several documents, the enum consts of a shared model came from the LAST document while its type came from the
+  first: both come from the first-listed document now.
+- An enum value that gives no identifier after the key rules (`gemini/gemini-3.1-flash`) is its own quoted key.
+
 ## 0.11.0
 
 ### Added

@@ -14,6 +14,12 @@ export interface ModelOptions {
    */
   naming?: 'rtk' | 'document';
   /**
+   * `all`: every schema an operation of the document reaches is written, also when `filterEndpoints` leaves its
+   * operations out of the api file (a models-only pass over all operations; their argument types are not written).
+   * `reachable` (default): the schemas of the generated endpoints.
+   */
+  scope?: 'reachable' | 'all';
+  /**
    * `false`: no barrel `index.ts` in the models folder — the api file and the models import every model by its path.
    * Default `true`. With `naming: 'document'` the barrel leaves out a model whose name another folder holds too.
    */
@@ -138,12 +144,12 @@ export function findDocumentModel(
 
 /**
  * The key an enum value gets in its const object: a dash camel-cases (`gpt-realtime` → `gptRealtime`), spaces, `/` and
- * `\` become `_`, an empty value `EMPTY`; a key that is still no identifier is quoted.
+ * `\` become `_`, an empty value `EMPTY`; a value that still gives no identifier is the key itself, quoted.
  */
 export function enumKeyOf(value: string): string {
   if (value.trim() === '') return 'EMPTY';
   const key = value.replace(/-+([A-Za-z0-9])/g, (_, next: string) => next.toUpperCase()).replace(/[ /\\]+/g, '_');
-  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(key) ? key : JSON.stringify(key);
+  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(key) ? key : JSON.stringify(value);
 }
 
 /**

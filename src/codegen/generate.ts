@@ -158,6 +158,34 @@ export async function generateSdk(options: GenerateSdkOptions = {}): Promise<Gen
         preparedEndpoints.endpointNamesByPlaceholder.get(rtkName) ?? rtkName,
       );
       const rtk = restoreEndpointNames(generated.code, generated.locations, preparedEndpoints.endpointNamesByPlaceholder);
+      const extractOptions = {
+        apiFilePath: api.outputFile,
+        modelsDir,
+        registry,
+        files,
+        logger,
+        esm: api.config.esmExtensions === true,
+        documentModels: prepared.documentModels,
+        enumConsts: modelOptions.enums === 'const',
+        constsByFile,
+        modelOptions,
+        writeIndex: modelOptions.index !== false,
+        uniqueNameByPath,
+      };
+      // models.scope 'all': the models of every operation, also those the endpoint filter leaves out of the api file
+      if (modelOptions.scope === 'all' && api.config.filterEndpoints !== undefined) {
+        const unfiltered = await runRtkCodegen(
+          { ...api, config: { ...api.config, filterEndpoints: undefined } },
+          preparedEndpoints.doc,
+          index,
+          path.join(specDir, `${i}-all.json`),
+          prettierConfigFile,
+          (rtkName) => preparedEndpoints.endpointNamesByPlaceholder.get(rtkName) ?? rtkName,
+        );
+        const unfilteredCode = restoreEndpointNames(unfiltered.code, unfiltered.locations, preparedEndpoints.endpointNamesByPlaceholder).code;
+        extractModels({ ...extractOptions, apiSource: unfilteredCode, modelsOnly: true });
+        logger.info('  models of all operations written (models.scope all)');
+      }
       const endpoints = parseApiEndpoints(rtk.code, logger, rtk.locations);
       const handlerEndpoints = detectResponseHandlerEndpoints(doc, endpoints, api.responseHandlers);
       const responseKinds = new Map<string, 'text' | 'blob'>();
@@ -172,22 +200,7 @@ export async function generateSdk(options: GenerateSdkOptions = {}): Promise<Gen
       if (multipart.injected.length > 0) logger.info(`  ${multipart.injected.length} multipart endpoint(s) (multipartFiles)`);
 
       const esm = api.config.esmExtensions === true;
-      const apiSource = extractModels({
-        apiSource: multipart.source,
-        apiFilePath: api.outputFile,
-        modelsDir,
-        registry,
-        files,
-        logger,
-        esm,
-        responseKinds,
-        documentModels: prepared.documentModels,
-        enumConsts: modelOptions.enums === 'const',
-        constsByFile,
-        modelOptions,
-        writeIndex: modelOptions.index !== false,
-        uniqueNameByPath,
-      });
+      const apiSource = extractModels({ ...extractOptions, apiSource: multipart.source, responseKinds });
       if (!write) continue;
       const withHandlers = injectResponseHandlers(apiSource, handlerEndpoints);
       files.set(api.outputFile, multipart.injected.length > 0 ? `${MULTIPART_IMPORT}\n${withHandlers}` : withHandlers);
