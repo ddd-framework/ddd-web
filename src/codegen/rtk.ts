@@ -1,8 +1,9 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { generateEndpoints } from '@rtk-query/codegen-openapi';
+import type { generateEndpoints } from '@rtk-query/codegen-openapi';
 import prettier from 'prettier';
 import { isPathLike, type ResolvedApi } from './config';
+import { loadRtkCodegen } from './module-resolution';
 import type { OperationLocation } from './endpoints';
 import { endpointTypeOverrides, testPattern, type OperationIndex } from './operations';
 import type { HttpMethod, OpenApiDocument } from './openapi';
@@ -114,7 +115,8 @@ export async function runRtkCodegen(
     ...(prettierConfigFile ? { prettierConfigFile } : {}),
   } as GenerationOptions;
 
-  const code = await generateEndpoints(options);
+  const { generateEndpoints: generateRtkEndpoints } = await loadRtkCodegen();
+  const code = await generateRtkEndpoints(options);
   if (typeof code !== 'string') throw new Error(`RTK codegen returned no code for ${api.stem}.`);
   return { code, locations };
 }

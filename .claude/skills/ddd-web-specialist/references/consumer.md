@@ -412,6 +412,9 @@ Idempotent; an existing symlink is repointed, a real file or directory is never 
 | `No tag for <endpoint> — no cache tags generated` | Operation without a matching tag: add a tag on the backend controller or an `endpointOverrides` |
 | `--schema needs exactly one api` | Combine with `--api <exportName>` |
 | `All apis must share one output directory when modelsDir is not set` | Set `modelsDir` |
+| `Cannot find module 'ajv/dist/core'` (or another ajv 8 module) while the generator loads | A consumer with `legacy-peer-deps` and an `ajv` 6 at the top of `node_modules`: since 0.6.2 the generator answers the parser's `ajv` from its own `ajv` 8 — update the package |
+| The type check is slow or reports errors your compiler does not | It ran another compiler: since 0.6.2 it takes the project's `typescript` through its package.json `bin` (TypeScript 7 included) and logs `Type check with TypeScript <version> (the project's compiler)` |
+| A polling read aborts with no visible reason (`subscribe: false`, `keepUnusedDataFor: 0`) | The removal timer of the previous answer removes the cache entry and aborts the next identical read. Subscribe while the read runs and unsubscribe after the answer: `const read = dispatch(api.endpoints.x.initiate(arg, { forceRefetch: true })); try { return await read.unwrap(); } finally { read.unsubscribe(); }` |
 | `type check failed — previous output restored` | Fix the reported type error (often app code using a renamed hook), or `--skip-tsc` to inspect |
 | A list does not refresh after a write | `<stem>Enhanced.ts` not imported; or the write has no tag — see section 3 |
 | A screen shows stale data after a write that changes more than its own entity | Writes invalidate by identity since 0.3 — add an `invalidation` resolver for that endpoint (section 3), or `broadInvalidation` for the 0.2 behaviour |

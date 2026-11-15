@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.2
+
+### Fixed
+- The generator loads in a consumer that installs with `legacy-peer-deps` and has `ajv` 6 at the top of
+  `node_modules`: the `ajv` lookups of `ajv-draft-04` (the OpenAPI parser's) are answered from the parser's own `ajv`
+  8, and the codegen is loaded after that hook.
+- The closing type check runs the PROJECT's compiler, found through `typescript/package.json` `bin` (TypeScript 7
+  exports no `typescript/bin/tsc`; the check fell back silently to the codegen's older TypeScript), and logs which one
+  ran. The generator's own compiler only when the project has no `typescript`.
+- Troubleshooting: a polling read with `subscribe: false` and `keepUnusedDataFor: 0` is aborted by the removal timer of
+  the previous answer — subscribe while the read runs, unsubscribe after the answer.
+
 ## 0.6.1
 
 ### Fixed
