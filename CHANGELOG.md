@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.13.0
+
+### Added
+- `@mgamadeus/ddd-web/contract` exports `normalizeDddError`, `getErrorMessage`, `getErrorStatus`,
+  `DEFAULT_ERROR_MESSAGE`, `DEFAULT_ERROR_MESSAGES` and the types `DddNormalizedError`, `DddErrorMessages`: code that
+  loads no RTK Query runtime (a logic layer without Redux) normalizes DDD errors too. `/api` exports the same
+  functions as before.
+
 ## 0.12.0
 
 ### Added

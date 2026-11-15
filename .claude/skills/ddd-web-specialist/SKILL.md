@@ -23,7 +23,7 @@ frontend code. No UI components, no domain logic — apps bring their own design
 | `@mgamadeus/ddd-web/query` | anywhere, no React | QueryOptions builders and definition-driven validators |
 | `@mgamadeus/ddd-web/api` | needs `@reduxjs/toolkit` 2 (peer) | `createDddBaseQuery` (+ `upload()`, `relogin`, `getSessionKey`), `createDddRefresh`, `normalizeDddError`, downloads, multipart (`buildDddMultipartBody`), `mergeDddTagTypes`, `createAuthEndpoints` |
 | `@mgamadeus/ddd-web/auth` | anywhere | `TokenStorage` adapters, `decodeJwt`, `isExpired`, SSR-safe storage |
-| `@mgamadeus/ddd-web/contract` | types + small helpers | `x-ddd-*` types, error body, DDD date-time, translations, operators |
+| `@mgamadeus/ddd-web/contract` | types + small helpers | `x-ddd-*` types, error body, DDD date-time, translations, operators, `normalizeDddError` / `getErrorMessage` / `getErrorStatus` (also without RTK) |
 
 ESM only, Node ≥ 20. Consumers may use npm or pnpm.
 

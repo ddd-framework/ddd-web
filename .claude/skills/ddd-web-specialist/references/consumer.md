@@ -365,7 +365,7 @@ shouldRefresh: (error, request) =>
   (error.status === 401 || error.status === 403) && !isBusinessRefusal(error) && !isDddAuthRequest(request),
 ```
 
-Errors: `normalizeDddError(error)` → `{ status, message, validationErrors, details, body }` from an RTK error, a thrown
+Errors (from `/api`, or from `/contract` in code that loads no RTK Query): `normalizeDddError(error)` → `{ status, message, validationErrors, details, body }` from an RTK error, a thrown
 `Error` or a raw body (`error` key first, then a text body); `getErrorMessage`, `getErrorStatus` for UI code. A
 response that is not JSON (an HTML error page, a PHP fatal, a proxy 502 — RTK's `PARSING_ERROR`) counts as an HTTP
 error: `status` is the HTTP status, the message `Server error (HTTP 500)` / `Request failed (HTTP 404)`, never the
