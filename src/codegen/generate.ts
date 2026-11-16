@@ -13,6 +13,7 @@ import {
 import { prepareDocumentForEndpoints, restoreEndpointNames } from './document-endpoints';
 import { prepareDocumentForModels } from './document-models';
 import { buildEnhancedEndpoints } from './enhance';
+import { splitRequestBuilders } from './request-builders';
 import { parseApiEndpoints } from './endpoints';
 import { OutputFiles } from './files';
 import { formatFiles, typecheck } from './format';
@@ -203,7 +204,17 @@ export async function generateSdk(options: GenerateSdkOptions = {}): Promise<Gen
       const apiSource = extractModels({ ...extractOptions, apiSource: multipart.source, responseKinds });
       if (!write) continue;
       const withHandlers = injectResponseHandlers(apiSource, handlerEndpoints);
-      files.set(api.outputFile, multipart.injected.length > 0 ? `${MULTIPART_IMPORT}\n${withHandlers}` : withHandlers);
+      const finalApiSource = multipart.injected.length > 0 ? `${MULTIPART_IMPORT}\n${withHandlers}` : withHandlers;
+      if (loaded.config.endpoints?.requestBuilders) {
+        // endpoints.requestBuilders: the request builders in a module of their own, the endpoints use them
+        const requestsStem = `${api.stem}Requests`;
+        const split = splitRequestBuilders(finalApiSource, requestsStem, esm ? `./${requestsStem}.js` : `./${requestsStem}`);
+        files.set(api.outputFile, split.apiSource);
+        files.set(path.join(api.outputDir, `${requestsStem}.ts`), split.requestsSource);
+        logger.info(`  ${split.count} request builder(s) in ${requestsStem}.ts`);
+      } else {
+        files.set(api.outputFile, finalApiSource);
+      }
 
       const withExtension = (specifier: string): string => (esm ? `${specifier}.js` : specifier);
       const enhanced = buildEnhancedEndpoints({

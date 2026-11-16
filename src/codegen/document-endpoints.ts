@@ -29,6 +29,13 @@ export interface EndpointOptions {
    * class that moves keeps the name). `rtk` (default): the camel-cased schema name.
    */
   bodyArg?: 'rtk' | 'requestBody';
+  /**
+   * `true`: the request builder of every endpoint (its `query`) goes into `<stem>Requests.ts` next to the api file, as
+   * `export const <stem>Requests = { <endpoint>: (queryArg: <Arg>) => ({ url, params, body, … }) }`, and the endpoint
+   * uses it (`query: <stem>Requests.<endpoint>`). A bundle that only builds requests imports that module without the
+   * endpoint injection. Default `false`.
+   */
+  requestBuilders?: boolean;
 }
 
 export const REQUEST_BODY_ARG = 'requestBody';

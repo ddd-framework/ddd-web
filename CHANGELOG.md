@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.14.0
+
+### Added
+- `endpoints.requestBuilders: true`: the request builder of every endpoint (its `query`) goes into
+  `<stem>Requests.ts` next to the api file — `export const <stem>Requests = { <endpoint>: (queryArg: <Arg>): string |
+  FetchArgs => ({ url, params, body, … }) }` — and the endpoint uses it (`query: <stem>Requests.<endpoint>`). A bundle
+  that only builds requests imports that module without the endpoint injection. Off by default.
+
 ## 0.13.0
 
 ### Added

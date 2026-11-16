@@ -61,6 +61,29 @@ describe('generateSdk — endpoints option', () => {
     expect(api).not.toContain('deleteAdminLibraryBooksByBookId:');
   }, 60_000);
 
+  it('moves every request builder into <stem>Requests.ts and lets the endpoints use it', async () => {
+    const app = createApp();
+    apps.push(app);
+    await generateSdk({
+      cwd: app,
+      config: { apis: [apiEntry(writeSpec(app, readSample()))], endpoints: { naming: 'path', bodyArg: 'requestBody', requestBuilders: true } },
+      logger: silentLogger,
+    });
+    const requests = read(app, 'src/api/adminApiRequests.ts').replace(/\s+/g, ' ').replace(/\( /g, '(').replace(/, \)/g, ')');
+    expect(requests).toContain('export const adminApiRequests = {');
+    expect(requests).toMatch(/getAdminLibraryBooksList: \(queryArg: GetAdminLibraryBooksListApiArg\): string \| FetchArgs => \(\{ url: `\/api\/admin\/library\/books\/list`/);
+    expect(requests).toMatch(/import type \{ FetchArgs \} from ["']@reduxjs\/toolkit\/query["']/);
+    expect(requests).toContain('body: queryArg.requestBody');
+    expect(requests).toMatch(/import \{[^}]*blobResponseHandler[^}]*\} from ["']@mgamadeus\/ddd-web\/api["']/);
+    expect(requests).not.toContain('injectEndpoints');
+    expect(requests).not.toContain('./baseApi');
+    const api = read(app, 'src/api/adminApi.ts').replace(/\s+/g, ' ');
+    expect(api).toContain('query: adminApiRequests.getAdminLibraryBooksList');
+    expect(api).toMatch(/import \{ adminApiRequests \} from ["']\.\/adminApiRequests["']/);
+    expect(api).not.toContain('blobResponseHandler');
+    expect(api).not.toContain('queryArg.');
+  }, 60_000);
+
   it('refuses two operations with the same name', async () => {
     const app = createApp();
     apps.push(app);
