@@ -33,9 +33,15 @@ export interface EndpointOptions {
    * `true`: the request builder of every endpoint (its `query`) goes into `<stem>Requests.ts` next to the api file, as
    * `export const <stem>Requests = { <endpoint>: (queryArg: <Arg>) => ({ url, params, body, … }) }`, and the endpoint
    * uses it (`query: <stem>Requests.<endpoint>`). A bundle that only builds requests imports that module without the
-   * endpoint injection. Default `false`.
+   * endpoint injection. `'all'`: the module holds the builder of EVERY operation of the document (and their argument
+   * types are written), while the api file injects only what `filterEndpoints` keeps. Default `false`.
    */
-  requestBuilders?: boolean;
+  requestBuilders?: boolean | 'all';
+  /**
+   * `drop` (default): parameters `in: cookie` leave the endpoints — a browser sends its cookies itself, and RTK Query's
+   * `FetchArgs` has no field for them (a builder with `cookies` fails the type check). `keep`: as RTK codegen writes them.
+   */
+  cookieParameters?: 'drop' | 'keep';
 }
 
 export const REQUEST_BODY_ARG = 'requestBody';
@@ -73,9 +79,13 @@ export function prepareDocumentForEndpoints(
 ): { doc: OpenApiDocument; endpointNamesByPlaceholder: Map<string, string> } {
   const naming = options.naming ?? 'rtk';
   const bodyArg = options.bodyArg ?? 'rtk';
+  const dropsCookieParameters = (options.cookieParameters ?? 'drop') === 'drop';
   const endpointNamesByPlaceholder = new Map<string, string>();
-  if (naming === 'rtk' && bodyArg === 'rtk') return { doc, endpointNamesByPlaceholder };
+  if (naming === 'rtk' && bodyArg === 'rtk' && !(dropsCookieParameters && hasCookieParameters(doc))) {
+    return { doc, endpointNamesByPlaceholder };
+  }
   const prepared = structuredClone(doc) as OpenApiDocument;
+  if (dropsCookieParameters) dropCookieParameters(prepared);
   const pathByName = new Map<string, string>();
   for (const [path, item] of Object.entries(prepared.paths ?? {})) {
     if (!item) continue;
@@ -124,6 +134,42 @@ export function restoreEndpointNames<Location>(
   const restoredLocations = new Map<string, Location>();
   for (const [key, location] of locations) restoredLocations.set(restore(key), location);
   return { code: restore(code), locations: restoredLocations };
+}
+
+const isCookieParameter = (parameter: unknown, doc: OpenApiDocument): boolean => {
+  const resolved = resolveParameter(parameter, doc);
+  return typeof resolved === 'object' && resolved !== null && (resolved as { in?: unknown }).in === 'cookie';
+};
+
+/** A parameter, or the component parameter its `$ref` points to. */
+function resolveParameter(parameter: unknown, doc: OpenApiDocument): unknown {
+  const ref = (parameter as { $ref?: unknown } | null)?.$ref;
+  if (typeof ref !== 'string' || !ref.startsWith('#/components/parameters/')) return parameter;
+  return (doc.components?.parameters as Record<string, unknown> | undefined)?.[ref.slice('#/components/parameters/'.length)];
+}
+
+/** Whether a path item or an operation of the document declares a cookie parameter. */
+function hasCookieParameters(doc: OpenApiDocument): boolean {
+  for (const item of Object.values(doc.paths ?? {})) {
+    if (!item) continue;
+    const lists = [item.parameters, ...HTTP_METHODS.map((method) => item[method]?.parameters)];
+    if (lists.some((list) => Array.isArray(list) && list.some((parameter) => isCookieParameter(parameter, doc)))) return true;
+  }
+  return false;
+}
+
+/** Removes every cookie parameter of the path items and operations (the document is a copy). */
+function dropCookieParameters(doc: OpenApiDocument): void {
+  for (const item of Object.values(doc.paths ?? {})) {
+    if (!item) continue;
+    if (Array.isArray(item.parameters)) item.parameters = item.parameters.filter((parameter) => !isCookieParameter(parameter, doc));
+    for (const method of HTTP_METHODS) {
+      const operation = item[method];
+      if (operation && Array.isArray(operation.parameters)) {
+        operation.parameters = operation.parameters.filter((parameter) => !isCookieParameter(parameter, doc));
+      }
+    }
+  }
 }
 
 /** RTK codegen names the body argument after a body schema's title when the schema is no `$ref`. */

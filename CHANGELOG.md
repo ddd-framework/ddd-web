@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.15.0
+
+### Added
+- `endpoints.requestBuilders: 'all'`: `<stem>Requests.ts` holds the request builder of every operation of the
+  document (their argument types are written), while the api file injects only what `filterEndpoints` keeps.
+
+### Changed
+- Parameters `in: cookie` leave the generated endpoints by default (`endpoints.cookieParameters: 'drop'`): a browser
+  sends its cookies itself and RTK Query's `FetchArgs` has no field for them — a request builder carrying `cookies`
+  failed the type check. `cookieParameters: 'keep'` restores the former output.
+
 ## 0.14.0
 
 ### Added

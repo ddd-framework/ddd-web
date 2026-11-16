@@ -84,6 +84,41 @@ describe('generateSdk — endpoints option', () => {
     expect(api).not.toContain('queryArg.');
   }, 60_000);
 
+  it('leaves cookie parameters out by default, so the request builders type-check', async () => {
+    const app = createApp();
+    apps.push(app);
+    const doc = readSample();
+    const listOperation = doc.paths!['/api/admin/library/books/list']!.get!;
+    listOperation.parameters = [...(listOperation.parameters ?? []), { name: 'encryptionPassword', in: 'cookie', schema: { type: 'string' } }];
+    await generateSdk({
+      cwd: app,
+      config: { apis: [apiEntry(writeSpec(app, doc))], endpoints: { naming: 'path', requestBuilders: true } },
+      logger: silentLogger,
+    });
+    expect(read(app, 'src/api/adminApiRequests.ts')).not.toContain('cookies');
+    expect(read(app, 'src/models/_endpoints/GetAdminLibraryBooksListApiArg.ts')).not.toContain('encryptionPassword');
+  }, 60_000);
+
+  it("writes the builders of every operation with requestBuilders 'all' while the api file injects only the filtered ones", async () => {
+    const app = createApp();
+    apps.push(app);
+    await generateSdk({
+      cwd: app,
+      config: {
+        apis: [apiEntry(writeSpec(app, readSample()), { filterEndpoints: ['getAdminLibraryBooksList'] })],
+        endpoints: { naming: 'path', bodyArg: 'requestBody', requestBuilders: 'all' },
+      },
+      logger: silentLogger,
+    });
+    const requests = read(app, 'src/api/adminApiRequests.ts');
+    expect(requests).toContain('getAdminLibraryBooksList:');
+    expect(requests).toContain('deleteAdminLibraryBooksByBookId:');
+    expect(requests).toContain('patchAdminLibraryBooks:');
+    const api = read(app, 'src/api/adminApi.ts');
+    expect(api).toContain('getAdminLibraryBooksList:');
+    expect(api).not.toContain('deleteAdminLibraryBooksByBookId:');
+  }, 90_000);
+
   it('refuses two operations with the same name', async () => {
     const app = createApp();
     apps.push(app);

@@ -155,17 +155,15 @@ export async function generateSdk(options: GenerateSdkOptions = {}): Promise<Gen
       const modelOptions = loaded.config.models ?? {};
       const prepared = prepareDocumentForModels(doc, modelOptions);
       const preparedEndpoints = prepareDocumentForEndpoints(prepared.doc, loaded.config.endpoints ?? {});
-      const generated = await runRtkCodegen(api, preparedEndpoints.doc, index, path.join(specDir, `${i}.json`), prettierConfigFile, (rtkName) =>
-        preparedEndpoints.endpointNamesByPlaceholder.get(rtkName) ?? rtkName,
-      );
-      const rtk = restoreEndpointNames(generated.code, generated.locations, preparedEndpoints.endpointNamesByPlaceholder);
+      const endpointOptions = loaded.config.endpoints ?? {};
+      const esm = api.config.esmExtensions === true;
       const extractOptions = {
         apiFilePath: api.outputFile,
         modelsDir,
         registry,
         files,
         logger,
-        esm: api.config.esmExtensions === true,
+        esm,
         documentModels: prepared.documentModels,
         enumConsts: modelOptions.enums === 'const',
         constsByFile,
@@ -173,45 +171,53 @@ export async function generateSdk(options: GenerateSdkOptions = {}): Promise<Gen
         writeIndex: modelOptions.index !== false,
         uniqueNameByPath,
       };
-      // models.scope 'all': the models of every operation, also those the endpoint filter leaves out of the api file
-      if (modelOptions.scope === 'all' && api.config.filterEndpoints !== undefined) {
-        const unfiltered = await runRtkCodegen(
-          { ...api, config: { ...api.config, filterEndpoints: undefined } },
-          preparedEndpoints.doc,
-          index,
-          path.join(specDir, `${i}-all.json`),
-          prettierConfigFile,
-          (rtkName) => preparedEndpoints.endpointNamesByPlaceholder.get(rtkName) ?? rtkName,
-        );
-        const unfilteredCode = restoreEndpointNames(unfiltered.code, unfiltered.locations, preparedEndpoints.endpointNamesByPlaceholder).code;
-        extractModels({ ...extractOptions, apiSource: unfilteredCode, modelsOnly: true });
-        logger.info('  models of all operations written (models.scope all)');
+      const endpointNameOf = (rtkName: string): string => preparedEndpoints.endpointNamesByPlaceholder.get(rtkName) ?? rtkName;
+      /**
+       * One RTK codegen pass over the document, turned into the api source as it is written: multipart bodies, models
+       * extracted (`modelsOnly`: the endpoint argument and response types are left out), response handlers.
+       */
+      const runPass = async (passApi: typeof api, specName: string, modelsOnly: boolean) => {
+        const generated = await runRtkCodegen(passApi, preparedEndpoints.doc, index, path.join(specDir, specName), prettierConfigFile, endpointNameOf);
+        const rtk = restoreEndpointNames(generated.code, generated.locations, preparedEndpoints.endpointNamesByPlaceholder);
+        const endpoints = parseApiEndpoints(rtk.code, logger, rtk.locations);
+        const handlerEndpoints = detectResponseHandlerEndpoints(doc, endpoints, api.responseHandlers);
+        const responseKinds = new Map<string, 'text' | 'blob'>();
+        for (const endpoint of endpoints) {
+          const kind = handlerEndpoints.get(endpoint.key);
+          if (kind && endpoint.responseType) responseKinds.set(endpoint.responseType, kind);
+        }
+        const multipart = injectMultipartBodies(rtk.code, detectMultipartEndpoints(doc, endpoints), logger);
+        const apiSource = extractModels({ ...extractOptions, apiSource: multipart.source, responseKinds, modelsOnly });
+        const withHandlers = injectResponseHandlers(apiSource, handlerEndpoints);
+        const finalApiSource = multipart.injected.length > 0 ? `${MULTIPART_IMPORT}\n${withHandlers}` : withHandlers;
+        return { endpoints, handlerEndpoints, multipartCount: multipart.injected.length, finalApiSource };
+      };
+      // models.scope 'all' and endpoints.requestBuilders 'all': a pass over every operation, also those the endpoint
+      // filter leaves out of the api file — for the models, and (builders 'all') for the request builders and their
+      // argument types
+      const buildersOfAllOperations = endpointOptions.requestBuilders === 'all' && api.config.filterEndpoints !== undefined;
+      let requestsSourceOfAllOperations: string | null = null;
+      if ((modelOptions.scope === 'all' || buildersOfAllOperations) && api.config.filterEndpoints !== undefined) {
+        const unfiltered = await runPass({ ...api, config: { ...api.config, filterEndpoints: undefined } }, `${i}-all.json`, !buildersOfAllOperations);
+        if (buildersOfAllOperations) {
+          const requestsStem = `${api.stem}Requests`;
+          requestsSourceOfAllOperations = splitRequestBuilders(unfiltered.finalApiSource, requestsStem, `./${requestsStem}`).requestsSource;
+          logger.info('  request builders of all operations (endpoints.requestBuilders all)');
+        }
+        if (modelOptions.scope === 'all') logger.info('  models of all operations written (models.scope all)');
       }
-      const endpoints = parseApiEndpoints(rtk.code, logger, rtk.locations);
-      const handlerEndpoints = detectResponseHandlerEndpoints(doc, endpoints, api.responseHandlers);
-      const responseKinds = new Map<string, 'text' | 'blob'>();
-      for (const endpoint of endpoints) {
-        const kind = handlerEndpoints.get(endpoint.key);
-        if (kind && endpoint.responseType) responseKinds.set(endpoint.responseType, kind);
-      }
+      const { endpoints, handlerEndpoints, multipartCount, finalApiSource } = await runPass(api, `${i}.json`, false);
       const fileCount = [...handlerEndpoints.values()].filter((kind) => kind === 'blob').length;
       if (fileCount > 0) logger.info(`  ${fileCount} file download endpoint(s) (blobResponseHandler)`);
-
-      const multipart = injectMultipartBodies(rtk.code, detectMultipartEndpoints(doc, endpoints), logger);
-      if (multipart.injected.length > 0) logger.info(`  ${multipart.injected.length} multipart endpoint(s) (multipartFiles)`);
-
-      const esm = api.config.esmExtensions === true;
-      const apiSource = extractModels({ ...extractOptions, apiSource: multipart.source, responseKinds });
+      if (multipartCount > 0) logger.info(`  ${multipartCount} multipart endpoint(s) (multipartFiles)`);
       if (!write) continue;
-      const withHandlers = injectResponseHandlers(apiSource, handlerEndpoints);
-      const finalApiSource = multipart.injected.length > 0 ? `${MULTIPART_IMPORT}\n${withHandlers}` : withHandlers;
-      if (loaded.config.endpoints?.requestBuilders) {
+      if (endpointOptions.requestBuilders) {
         // endpoints.requestBuilders: the request builders in a module of their own, the endpoints use them
         const requestsStem = `${api.stem}Requests`;
         const split = splitRequestBuilders(finalApiSource, requestsStem, esm ? `./${requestsStem}.js` : `./${requestsStem}`);
         files.set(api.outputFile, split.apiSource);
-        files.set(path.join(api.outputDir, `${requestsStem}.ts`), split.requestsSource);
-        logger.info(`  ${split.count} request builder(s) in ${requestsStem}.ts`);
+        files.set(path.join(api.outputDir, `${requestsStem}.ts`), requestsSourceOfAllOperations ?? split.requestsSource);
+        logger.info(`  ${split.count} request builder(s) used by ${api.stem}.ts`);
       } else {
         files.set(api.outputFile, finalApiSource);
       }
