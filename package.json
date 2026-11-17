@@ -1,6 +1,6 @@
 {
   "name": "@mgamadeus/ddd-web",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "description": "TypeScript web client for backends built with mgamadeus/ddd, the DDD entity framework for Symfony and Doctrine (Composer/Packagist). Generates a typed RTK Query SDK from the backend's OpenAPI document, builds DDD QueryOptions (filters, orderBy, expand, select, paging) and handles JWT auth with token refresh.",
   "keywords": [
     "ddd",
@@ -49,6 +49,22 @@
       "types": "./dist/fetch-api-request/index.d.ts",
       "import": "./dist/fetch-api-request/index.js"
     },
+    "./issues": {
+      "types": "./dist/issues/index.d.ts",
+      "import": "./dist/issues/index.js"
+    },
+    "./issues/browser": {
+      "types": "./dist/issues/browser/index.d.ts",
+      "import": "./dist/issues/browser/index.js"
+    },
+    "./issues/node": {
+      "types": "./dist/issues/node/index.d.ts",
+      "import": "./dist/issues/node/index.js"
+    },
+    "./issues/wire": {
+      "types": "./dist/issues/wire/index.d.ts",
+      "import": "./dist/issues/wire/index.js"
+    },
     "./vite": {
       "types": "./dist/vite/index.d.ts",
       "import": "./dist/vite/index.js"
@@ -72,7 +88,7 @@
   ],
   "scripts": {
     "build": "node scripts/clean.mjs && tsup",
-    "typecheck": "tsc -p .",
+    "typecheck": "tsc -p . && tsc -p tsconfig.issues-core.json",
     "test": "vitest run",
     "prepack": "pnpm build"
   },

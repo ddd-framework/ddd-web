@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.16.0
+
+### Added
+- Client-errors reporter for the issues log of a mgamadeus/ddd backend (`IssuesLogService::logClientIssue`, Core
+  3.10.0 or newer; body `{ report: { client, events } }` of the `ClientIssueReport` value objects, default path
+  `/api/public/common/issues/report`):
+  - `@mgamadeus/ddd-web/issues`: the platform-free core — `createIssuesReporter` (redact, drop, de-duplicate by
+    `clientFingerprint` into `count`, session or windowed caps, batching ≤ 10 events / 48 KB, size shrinking, one retry,
+    backoff, bearer and server-token headers), `normalizeError` / `parseStack` (V8, SpiderMonkey, JavaScriptCore),
+    `createIssuesRedactor` / `redactUrl` / `redactText`, `buildClientFingerprint`, `ISSUES_LIMITS` /
+    `mergeIssuesLimits`, `ISSUE_DROP_RULES` / `findIssueDropRule`, breadcrumb builders and trail, `buildRoutePattern`
+    / `createIssuesRouteTracker`, `createFetchIssuesTransport`. No DOM, no Node API, no global read at import time:
+    loads in React Native.
+  - `@mgamadeus/ddd-web/issues/browser`: `createBrowserIssuesReporter`, `installBrowserIssueCapture` (uncaught errors,
+    unhandled rejections; breadcrumbs from failed requests, `console.error` and clicks; flush on `pagehide`),
+    `createBeaconIssuesTransport`, `createBrowserIssuesRouteTracker`, `captureRenderError`, `readOrCreateIssuesTabId`.
+  - `@mgamadeus/ddd-web/issues/node`: `createNodeIssuesReporter`, `createServerRequestErrorHandler` (the shape of an
+    `onRequestError` hook), `installNodeIssueCapture`.
+  - `@mgamadeus/ddd-web/issues/wire`: the wire types (`DddClientIssueReport`, `DddClientIssueEvent`, …,
+    `DddClientIssueIngestResult`), `dddIssuesWireAdapter`, `DDD_ISSUES_REPORT_PATH`.
+- `pnpm typecheck` also checks the issues core without the DOM lib and without Node types
+  (`tsconfig.issues-core.json`).
+
 ## 0.15.0
 
 ### Added

@@ -11,6 +11,7 @@
 7. Contract helpers (`/contract`)
 8. Agent skills (`link-skills`)
 5a. Pages with a foreign global `Request` (`/fetch-api-request`, `/vite`)
+5b. Client errors (`/issues`, `/issues/browser`, `/issues/node`, `/issues/wire`)
 9. Troubleshooting
 
 ## 1. Configuration (`openapi-config.ts`)
@@ -411,6 +412,98 @@ export default defineConfig({ plugins: [react(), dddFetchApiRequestPlugin()] });
 - Other bundlers: alias `Request` in that one module the same way.
 - `isFetchApiRequest` / `isFetchApiRequestConstructor` check the `[object Request]` tag, not `instanceof`: a request from
   the frame is no instance of the page's `Request`.
+
+## 5b. Client errors (`/issues`, `/issues/browser`, `/issues/node`, `/issues/wire`)
+
+One reporter for a browser, the app's Node server and a React Native app. It sends to the client-errors endpoint of
+a mgamadeus/ddd backend: the application's controller hands the body to `IssuesLogService::logClientIssue()` (Core
+3.10.0 or newer), and the events land in the issues log with the backend's errors (sections WEB, WEB_SERVER).
+
+**Server contract.** `POST` (default path `DDD_ISSUES_REPORT_PATH` = `/api/public/common/issues/report`, the route of
+the issues-log guide; the application owns it) with the body `{ report: { client, events } }`:
+`client` = `ClientIssueContext` (`runtime` `browser` · `node` · `react-native`, `app`, `release`, `tabId`,
+`userAgent` (node / RN only), `viewportWidth`, `viewportHeight`, `locale`); `events.elements` = 1–10
+`ClientIssueEvent` (`occurredAt`, `kind` `error` · `unhandledrejection` · `react-render` · `server-request` · `manual`,
+`level` `error` · `warning`, `name`, `message`, `frames.elements` (innermost first), `rawStack` (only without frames),
+`url`, `routePattern`, `requestMethod`, `httpStatus`, `breadcrumbs.elements`, `tags.elements`, `count`,
+`clientFingerprint`). Answer: `ClientIssueIngestResult` (`accepted`, `dropped`, `dropReasons`). Headers:
+`Authorization: Bearer …` when `getAuthorization` returns a token (the controller attributes the account), the server
+token (`X-Issues-Server-Token` by default, `serverTokenHeader`) from the app's own server (section WEB_SERVER). The
+reporter's caps equal the backend's; the backend enforces them again.
+
+**Browser** (in the client entry, before hydration):
+
+```ts
+import { createBrowserIssuesReporter, installBrowserIssueCapture, captureRenderError } from '@mgamadeus/ddd-web/issues/browser';
+
+export const issuesReporter = createBrowserIssuesReporter({
+  app: 'web',
+  endpoint: `${apiBaseUrl}/api/public/common/issues/report`, // default: that path on the page's origin
+  release: () => document.documentElement.dataset.release ?? null, // the key the source maps are uploaded under
+  getAuthorization: () => tokenStorage.read().accessToken,         // or later: issuesReporter.setAuthorizationReader(…)
+}); // null during SSR
+if (issuesReporter) installBrowserIssueCapture(issuesReporter); // error, unhandledrejection, breadcrumbs, pagehide flush
+
+// error boundary: an error with a `digest` came from the server and is reported there
+captureRenderError(issuesReporter, error);
+```
+
+Route tracking: `createBrowserIssuesRouteTracker(reporter).trackRoute(pathname, params)` on every route change (e.g.
+an effect on the router's path and params). It sets the route PATTERN (`/books/[bookId]`), which names the issue on
+the backend, and adds a navigation breadcrumb.
+
+**Node server:**
+
+```ts
+import { createNodeIssuesReporter, createServerRequestErrorHandler } from '@mgamadeus/ddd-web/issues/node';
+
+const serverIssuesReporter = createNodeIssuesReporter({
+  app: 'web',
+  apiBaseUrl: process.env.API_INTERNAL_URL,               // + DDD_ISSUES_REPORT_PATH
+  serverToken: process.env.ISSUES_INGEST_SERVER_TOKEN,    // → section WEB_SERVER
+  release: () => process.env.WEB_RELEASE ?? null,
+});
+export const onRequestError = createServerRequestErrorHandler(() => serverIssuesReporter); // Next.js instrumentation.ts
+```
+
+`installNodeIssueCapture(reporter)` adds `uncaughtExceptionMonitor` (observes only) and a flush on `beforeExit`;
+`{ unhandledRejections: true }` also reports rejections — that listener stops Node from exiting on one.
+
+**React Native / anything else:** the core directly, with `createFetchIssuesTransport()`:
+
+```ts
+import { createIssuesReporter, createFetchIssuesTransport, createIssuesRouteTracker } from '@mgamadeus/ddd-web/issues';
+
+const reporter = createIssuesReporter({
+  runtime: 'react-native', app: 'mobile',
+  endpoint: () => `${apiBaseUrl}/api/public/common/issues/report`,
+  transport: createFetchIssuesTransport({ timeoutMs: 10_000 }),
+  context: () => ({ release: appVersion, userAgent: `ExampleApp/${appVersion} (${platform})`, locale }),
+});
+ErrorUtils.setGlobalHandler((error) => reporter.captureError(error, 'error'));
+```
+
+Behaviour:
+- **Redaction** before anything leaves the device: token path segments (default = the backend's
+  `redactPathSegments`; `createIssuesRedactor({ tokenPathSegments, additionalRules })` for the app's own), `*token*`
+  query values, e-mails, bearer / JWT tokens, UUIDs, international phone numbers, long hex path segments.
+- **Drops** what the backend drops anyway (chunk loads, `Script error.`, `ResizeObserver loop`) plus extension errors,
+  `window.ethereum`, `AbortError` and automated browsers; `dropRules: [...ISSUE_DROP_RULES, own]` extends the list.
+- **De-duplication:** a repeat of a queued event raises its `count`; `clientFingerprint` = `name | normalised message
+  | top frame` (informational — the backend builds its own hashes).
+- **Caps:** `rateLimitMode` `session` (browser default: 3 per fingerprint, 25 per page session, stop after 3 failed
+  sends) or `windowed` (node / react-native default: 3 per fingerprint per 5 min, 60 per minute, exponential backoff).
+  Batches of ≤ 10 events / 48 KB after 2 s or at 5 events; an event over 16 KB loses breadcrumbs, then frames beyond
+  10, the raw stack and the message beyond 256 characters. One retry on a network error or 5xx, none on a 4xx.
+  `limits` overrides any of it.
+- **Breadcrumbs** (≤ 20, newest kept): failed requests, `console.error`, clicks (`data-issues-action`, else tag and
+  role — never text), navigations; not attached on `node` (a server's trail mixes requests).
+- **Transports:** browser = fetch with `keepalive`, `credentials: 'omit'`, the fetch from before the capture wrapped
+  it; on `flush({ unloading: true })` a beacon (`text/plain`, no preflight) unless the request carries `Authorization`
+  or a server token (a beacon has no headers).
+- **Typed body from the app's own SDK:** pass `wire: { toWireEvent, toRequestBody }` built from the generated
+  `ClientIssueEvent` / request DTO models; the default `dddIssuesWireAdapter` writes the same shape.
+- The reporter never throws into its caller and never reports its own failures.
 
 ## 6. Tokens (`/auth`)
 

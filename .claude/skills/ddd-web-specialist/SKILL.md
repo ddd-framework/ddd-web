@@ -1,9 +1,9 @@
 ---
 name: ddd-web-specialist
-description: "Use and maintain @mgamadeus/ddd-web, the TS client of mgamadeus/ddd: openapi-config.ts with defineConfig (schemaFile, sideEffects, responseHandlers, invalidation), the RTK Query SDK from ddd-web-sdk (Enhanced/Tags files, cache tags by entity identity, mergeDddTagTypes, blobResponseHandler downloads, multipartFiles uploads, upload/download progress via baseQuery.upload), QueryOptions builders (buildQueryOptions, combineFilters, buildInFilter), createDddBaseQuery (Bearer, shared refresh + retry, relogin, session-bound requests, shouldRefresh, normalizeDddError), token storage, JWT helpers, foreign global Request (MooTools: dddFetchApiRequestPlugin), link-skills, release. Use when wiring a frontend to a DDD backend, regenerating the SDK, building filters, uploading files, FormData, upload or download progress, fixing token refresh, guest login, a request sent under the wrong account after a switch, stale cache tags, downloading an export, requests failing in a legacy page, or releasing ddd-web."
+description: "Use and maintain @mgamadeus/ddd-web, the TS client of mgamadeus/ddd: openapi-config.ts defineConfig (schemaFile, sideEffects, responseHandlers, invalidation), the RTK Query SDK from ddd-web-sdk (cache tags by entity identity, mergeDddTagTypes, blob downloads, multipartFiles uploads, progress via baseQuery.upload), QueryOptions builders, createDddBaseQuery (Bearer, shared refresh + retry, relogin, session-bound requests, normalizeDddError), token storage, JWT helpers, foreign global Request (MooTools: dddFetchApiRequestPlugin), the client-errors reporter /issues (browser, Node, React Native), link-skills, release. Use when wiring a frontend to a DDD backend, regenerating the SDK, building filters, uploading files, FormData, upload or download progress, fixing token refresh, guest login, a request sent under the wrong account after a switch, stale cache tags, downloading an export, requests failing in a legacy page, reporting web, server or mobile errors to the issues log, or releasing ddd-web."
 metadata:
   author: mgamadeus
-  version: "1.4.2"
+  version: "1.5.0"
   package: "@mgamadeus/ddd-web"
 ---
 
@@ -24,6 +24,10 @@ frontend code. No UI components, no domain logic — apps bring their own design
 | `@mgamadeus/ddd-web/api` | needs `@reduxjs/toolkit` 2 (peer) | `createDddBaseQuery` (+ `upload()`, `relogin`, `getSessionKey`), `createDddRefresh`, `normalizeDddError`, downloads, multipart (`buildDddMultipartBody`), `mergeDddTagTypes`, `createAuthEndpoints` |
 | `@mgamadeus/ddd-web/auth` | anywhere | `TokenStorage` adapters, `decodeJwt`, `isExpired`, SSR-safe storage |
 | `@mgamadeus/ddd-web/contract` | types + small helpers | `x-ddd-*` types, error body, DDD date-time, translations, operators, `normalizeDddError` / `getErrorMessage` / `getErrorStatus` (also without RTK) |
+| `@mgamadeus/ddd-web/issues` | anywhere (no DOM, no Node API: browser, Node, React Native) | client-errors reporter core: `createIssuesReporter`, normalise, redact, fingerprint, limits, drop rules, breadcrumbs, `buildRoutePattern` / `createIssuesRouteTracker`, `createFetchIssuesTransport` |
+| `@mgamadeus/ddd-web/issues/browser` | browser | `createBrowserIssuesReporter`, `installBrowserIssueCapture`, `createBeaconIssuesTransport`, `createBrowserIssuesRouteTracker`, `captureRenderError` |
+| `@mgamadeus/ddd-web/issues/node` | Node ≥ 20 | `createNodeIssuesReporter`, `createServerRequestErrorHandler` (`onRequestError` shape), `installNodeIssueCapture` |
+| `@mgamadeus/ddd-web/issues/wire` | types + adapter | the `ClientIssueReport` wire types, `dddIssuesWireAdapter`, `DDD_ISSUES_REPORT_PATH` |
 
 ESM only, Node ≥ 20. Consumers may use npm or pnpm.
 
@@ -116,10 +120,15 @@ const { data } = useGetApiAdminLibraryBooksListQuery({
   `invalidation` resolver in the config (`broadInvalidation` = the 0.2 behaviour). A spec without
   `info.x-ddd-contract` is read as a pre-contract DDD spec (warning); an unsupported contract number aborts.
 
+- **Client errors go through `/issues`** to the application's client-errors endpoint (`logClientIssue`, Core ≥ 3.10.0):
+  one reporter per runtime, the route PATTERN set on every navigation, never a hand-written `window.onerror` + `fetch`.
+  Keep `/issues` free of DOM and Node APIs (`tsconfig.issues-core.json` checks it); platform code goes into
+  `/issues/browser` or `/issues/node`.
+
 ## References
 
 - [references/consumer.md](references/consumer.md) — every config option, CLI flag, generated file and cache-tag rule;
-  the query builders and validators; base query, refresh, errors, downloads; token storage; contract helpers;
-  troubleshooting.
+  the query builders and validators; base query, refresh, errors, downloads; the client-errors reporter; token storage;
+  contract helpers; troubleshooting.
 - [references/maintaining.md](references/maintaining.md) — repository layout, build and tests, the consumer check, the
   `x-ddd` contract and how it stays in step with `mgamadeus/ddd`, release workflow, versioning.

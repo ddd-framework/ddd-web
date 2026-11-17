@@ -17,6 +17,8 @@ those conventions into frontend code:
   file downloads
 - **auth**: token-pair utilities and a pluggable storage adapter
 - **contract**: TypeScript types for the DDD wire format
+- **issues**: a client-errors reporter for browsers, Node servers and React Native apps that sends to the backend's
+  issues log
 
 It contains no UI components and no domain logic; apps bring their own design system and business screens.
 Works with the OpenAPI output of current mgamadeus/ddd backends. The `x-ddd-*` extensions (contract version 1) are used
@@ -48,8 +50,9 @@ pnpm exec ddd-web-sdk            # generate the SDK
 pnpm exec ddd-web link-skills    # link the package's agent skills into .claude/skills
 ```
 
-Subpaths: `@mgamadeus/ddd-web/codegen`, `/query`, `/api`, `/auth`, `/contract`, `/fetch-api-request` and `/vite`
-(pages whose global `Request` is not the Fetch API's, e.g. MooTools or Prototype: `dddFetchApiRequestPlugin()`).
+Subpaths: `@mgamadeus/ddd-web/codegen`, `/query`, `/api`, `/auth`, `/contract`, `/fetch-api-request`, `/vite`
+(pages whose global `Request` is not the Fetch API's, e.g. MooTools or Prototype: `dddFetchApiRequestPlugin()`) and
+`/issues`, `/issues/browser`, `/issues/node`, `/issues/wire` (client errors, below).
 
 ### File downloads
 
@@ -145,6 +148,51 @@ export default defineConfig({
   apis: [/* … each entry may have its own invalidation, checked first */],
 });
 ```
+
+### Client errors
+
+`@mgamadeus/ddd-web/issues` reports the errors of a browser, the app's Node server or a React Native app to the
+client-errors endpoint of a mgamadeus/ddd backend (`IssuesLogService::logClientIssue`, Core 3.10.0 or newer; the
+application declares the route, by default `POST /api/public/common/issues/report`). The core has no DOM, framework
+or Node dependency; the platform adapters are separate entries.
+
+```ts
+// browser, before hydration
+import {
+  createBrowserIssuesReporter,
+  createBrowserIssuesRouteTracker,
+  installBrowserIssueCapture,
+} from '@mgamadeus/ddd-web/issues/browser';
+
+const issuesReporter = createBrowserIssuesReporter({
+  app: 'web',
+  endpoint: 'https://api.example.com/api/public/common/issues/report',
+  release: () => document.documentElement.dataset.release ?? null,
+  getAuthorization: () => tokenStorage.read().accessToken,
+});
+if (issuesReporter) installBrowserIssueCapture(issuesReporter); // uncaught errors, rejections, breadcrumbs, unload flush
+const issuesRouteTracker = issuesReporter && createBrowserIssuesRouteTracker(issuesReporter);
+
+// on every route change: the route PATTERN names the issue on the backend
+issuesRouteTracker?.trackRoute(pathname, params); // → /books/[bookId]
+```
+
+```ts
+// Node server (e.g. Next.js instrumentation.ts)
+import { createNodeIssuesReporter, createServerRequestErrorHandler } from '@mgamadeus/ddd-web/issues/node';
+
+const serverIssuesReporter = createNodeIssuesReporter({
+  app: 'web',
+  apiBaseUrl: process.env.API_INTERNAL_URL,
+  serverToken: process.env.ISSUES_INGEST_SERVER_TOKEN, // the backend files these as WEB_SERVER
+});
+export const onRequestError = createServerRequestErrorHandler(() => serverIssuesReporter);
+```
+
+React Native and other runtimes use `createIssuesReporter` from `/issues` with `createFetchIssuesTransport()`.
+Everything is redacted on the device (tokens in paths and queries, e-mails, bearer / JWT tokens, UUIDs, phone numbers),
+known noise is dropped, repeats are folded into `count`, and caps, batching, retry and backoff keep a broken page from
+flooding the endpoint. Details: the agent skill, `references/consumer.md` › Client errors.
 
 ## Agent skill
 

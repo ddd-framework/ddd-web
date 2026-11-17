@@ -1,0 +1,11 @@
+// The core of the issues reporter and its wire format load in browsers, Node and React Native: checked without the DOM
+// lib and without Node types, so a reference to `window`, `document`, `navigator` or a Node API fails the type check.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": []
+  },
+  "include": ["src/issues/*.ts", "src/issues/wire/*.ts"],
+  "exclude": []
+}

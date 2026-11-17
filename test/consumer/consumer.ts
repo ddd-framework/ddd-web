@@ -7,6 +7,10 @@ import { FetchApiRequest, isFetchApiRequest } from '@mgamadeus/ddd-web/fetch-api
 import { dddFetchApiRequestPlugin, type DddFetchApiRequestPlugin } from '@mgamadeus/ddd-web/vite';
 import { hasSideEffects, parseDddDateTime, type DddEntityInfo, type FilterOperator } from '@mgamadeus/ddd-web/contract';
 import { buildInFilter, buildQueryOptions, combineFilters, type QueryOptionsParams } from '@mgamadeus/ddd-web/query';
+import { createIssuesReporter, createIssuesRouteTracker, type IssuesReporter, type IssuesTransport } from '@mgamadeus/ddd-web/issues';
+import { captureRenderError, createBrowserIssuesReporter, installBrowserIssueCapture } from '@mgamadeus/ddd-web/issues/browser';
+import { createNodeIssuesReporter, createServerRequestErrorHandler } from '@mgamadeus/ddd-web/issues/node';
+import { DDD_ISSUES_REPORT_PATH, dddIssuesWireAdapter, type DddClientIssueIngestResult } from '@mgamadeus/ddd-web/issues/wire';
 import manifest from '@mgamadeus/ddd-web/package.json' with { type: 'json' };
 
 const storage: TokenStorage = createMemoryTokenStorage({ accessToken: 'a', refreshToken: 'r' });
@@ -34,3 +38,21 @@ const fetchApiRequestPlugin: DddFetchApiRequestPlugin = dddFetchApiRequestPlugin
 const fetchApiRequestIsGenuine: boolean = isFetchApiRequest(new FetchApiRequest('https://api.test/x'));
 void fetchApiRequestPlugin;
 void fetchApiRequestIsGenuine;
+
+const issuesTransport: IssuesTransport = async () => ({ status: 200 });
+const mobileIssuesReporter: IssuesReporter = createIssuesReporter({
+  runtime: 'react-native',
+  app: 'mobile',
+  endpoint: () => `https://api.example.com${DDD_ISSUES_REPORT_PATH}`,
+  transport: issuesTransport,
+  wire: dddIssuesWireAdapter,
+});
+createIssuesRouteTracker(mobileIssuesReporter).trackRoute('/books/1', { bookId: '1' });
+const browserIssuesReporter: IssuesReporter | null = createBrowserIssuesReporter({ app: 'web', release: () => 'web-1' });
+if (browserIssuesReporter) installBrowserIssueCapture(browserIssuesReporter);
+captureRenderError(browserIssuesReporter, new Error('render'));
+const serverIssuesReporter: IssuesReporter = createNodeIssuesReporter({ app: 'web', apiBaseUrl: 'https://api.example.com', serverToken: 's' });
+const onRequestError = createServerRequestErrorHandler(() => serverIssuesReporter);
+const ingestResult: DddClientIssueIngestResult = { accepted: 1, dropped: 0, dropReasons: [] };
+void onRequestError;
+void ingestResult;

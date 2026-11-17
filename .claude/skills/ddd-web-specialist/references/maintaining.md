@@ -19,6 +19,10 @@ src/
               definition-driven validators (definition.ts) — no React, no RTK
   api/        createDddBaseQuery, refresh coordination, errors, downloads, debug passthrough, auth endpoints
   auth/       token storage adapters, JWT helpers, SSR-safe storage
+  issues/     client-errors reporter: core (capture model, normalize, redact, fingerprint, limits, filters,
+              breadcrumbs, route pattern, transport, reporter) — no DOM, no Node API, checked by
+              tsconfig.issues-core.json and test/issues/core-without-dom.test.ts; wire/ (DDD ClientIssueReport shape),
+              browser/, node/ (adapters)
   codegen/    cli.ts (bins), config.ts (defineConfig, loadConfig), generate.ts (pipeline), spec.ts (load + validate),
               registry / models / rtk / endpoints / enhance / tags / response-handlers (text + file detection,
               AST-based injection that aborts on a miss) / repair / output (atomic commit),
