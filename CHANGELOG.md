@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.16.2
+
+### Fixed
+- `createIssuesRedactor` / `redactText` / `redactUrl`: a token after a token path segment (`/reset-password/…`) and a
+  `token` query value now end at the next `/`, `?`, `#`, `&`, whitespace, quote (`'` `"` `` ` ``), `<`, `>`, `)` or
+  `]`. Before, a token path segment in free text consumed the rest of the text up to the next `?` or `#`, so the text
+  after it was lost and the e-mail and additional rules never applied to it.
+
 ## 0.16.1
 
 ### Changed

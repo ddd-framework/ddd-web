@@ -36,8 +36,14 @@ export const DEFAULT_ISSUES_TOKEN_PATH_SEGMENTS: readonly string[] = Object.free
   'reset-password',
 ]);
 
+/**
+ * Characters that end a token (a path segment or a query value): the URL delimiters `/ ? # &`, whitespace, quotes and
+ * the brackets a URL is typically wrapped in inside free text, so the text after the token stays and keeps its rules.
+ */
+const TOKEN_TERMINATOR_CHARACTERS = '/?#&\\s\'"`<>)\\]';
+
 /** Any query parameter whose name contains `token`. */
-const TOKEN_QUERY_PARAMETER = /([?&][^=&#]*token[^=&#]*)=[^&#]*/gi;
+const TOKEN_QUERY_PARAMETER = new RegExp(`([?&][^=&#\\s]*token[^=&#\\s]*)=(?!\\[redacted\\])[^${TOKEN_TERMINATOR_CHARACTERS}]*`, 'gi');
 
 /** Rules by value. Order matters: a bearer and a JWT go before the generic rules. */
 export const ISSUES_REDACTION_RULES: readonly IssuesRedactionRule[] = Object.freeze([
@@ -64,7 +70,7 @@ export const createIssuesRedactor = (options: IssuesRedactorOptions = {}): Issue
     .filter((segment) => segment !== '');
   const tokenRouteSegment =
     tokenPathSegments.length > 0
-      ? new RegExp(`/(${tokenPathSegments.map(escapeRegExp).join('|')})/[^/?#]+`, 'g')
+      ? new RegExp(`/(${tokenPathSegments.map(escapeRegExp).join('|')})/(?!\\[redacted\\])[^${TOKEN_TERMINATOR_CHARACTERS}]+`, 'g')
       : null;
   const valueRules = [...ISSUES_REDACTION_RULES, ...(options.additionalRules ?? [])];
 
