@@ -459,12 +459,17 @@ import { createNodeIssuesReporter, createServerRequestErrorHandler } from '@mgam
 
 const serverIssuesReporter = createNodeIssuesReporter({
   app: 'web',
-  apiBaseUrl: process.env.API_INTERNAL_URL,               // + DDD_ISSUES_REPORT_PATH
+  apiBaseUrl: process.env.API_INTERNAL_URL,               // + DDD_ISSUES_REPORT_PATH (reportPath)
+  // or: endpoint: 'https://api.internal/api/public/common/issues/report' | () => url  — the FULL URL, wins over apiBaseUrl
   serverToken: process.env.ISSUES_INGEST_SERVER_TOKEN,    // → section WEB_SERVER
   release: () => process.env.WEB_RELEASE ?? null,
 });
 export const onRequestError = createServerRequestErrorHandler(() => serverIssuesReporter); // Next.js instrumentation.ts
 ```
+
+`endpoint` (string or function) is the full URL and wins when both are set; `apiBaseUrl` stays for compatibility —
+as a function it, too, returns the full URL (kept from 0.16.0; prefer `endpoint`). The browser reporter has only
+`endpoint` (full URL, or a path of the page's origin).
 
 `installNodeIssueCapture(reporter)` adds `uncaughtExceptionMonitor` (observes only) and a flush on `beforeExit`;
 `{ unhandledRejections: true }` also reports rejections — that listener stops Node from exiting on one.
@@ -502,7 +507,9 @@ Behaviour:
   it; on `flush({ unloading: true })` a beacon (`text/plain`, no preflight) unless the request carries `Authorization`
   or a server token (a beacon has no headers).
 - **Typed body from the app's own SDK:** pass `wire: { toWireEvent, toRequestBody }` built from the generated
-  `ClientIssueEvent` / request DTO models; the default `dddIssuesWireAdapter` writes the same shape.
+  `ClientIssueEvent` / request DTO models; the default `dddIssuesWireAdapter` writes the same shape. Works with
+  `createIssuesReporter`, `createBrowserIssuesReporter` and `createNodeIssuesReporter` alike (all generic over the event
+  and body types, defaulting to the DDD ones; inferred from `wire`).
 - The reporter never throws into its caller and never reports its own failures.
 
 ## 6. Tokens (`/auth`)

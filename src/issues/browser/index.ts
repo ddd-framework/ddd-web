@@ -114,12 +114,19 @@ export const createBeaconIssuesTransport = (options: BeaconIssuesTransportOption
   };
 };
 
-type BrowserReporterBaseOptions = Omit<
-  IssuesReporterOptions<DddClientIssueEvent, DddClientIssuesReportRequestBody>,
+type BrowserReporterBaseOptions<TWireEvent, TRequestBody> = Omit<
+  IssuesReporterOptions<TWireEvent, TRequestBody>,
   'runtime' | 'endpoint' | 'transport' | 'context' | 'serverToken' | 'serverTokenHeader'
 >;
 
-export interface BrowserIssuesReporterOptions extends BrowserReporterBaseOptions {
+/**
+ * Generic over the wire types like {@link IssuesReporterOptions}: the defaults are the DDD contract; a `wire` built
+ * from your generated models types the event and the body with them.
+ */
+export interface BrowserIssuesReporterOptions<
+  TWireEvent = DddClientIssueEvent,
+  TRequestBody = DddClientIssuesReportRequestBody,
+> extends BrowserReporterBaseOptions<TWireEvent, TRequestBody> {
   /**
    * The ingest endpoint: a full URL, a path of this origin, or a function read at send time. Default
    * {@link DDD_ISSUES_REPORT_PATH} on this origin.
@@ -140,7 +147,12 @@ export interface BrowserIssuesReporterOptions extends BrowserReporterBaseOptions
  * A reporter for the page: runtime `browser`, session caps, viewport / locale / tab id as context, in-app files =
  * this origin's scripts, nothing reported under automation (`navigator.webdriver`). Null outside a browser (SSR).
  */
-export const createBrowserIssuesReporter = (options: BrowserIssuesReporterOptions): IssuesReporter | null => {
+export const createBrowserIssuesReporter = <
+  TWireEvent = DddClientIssueEvent,
+  TRequestBody = DddClientIssuesReportRequestBody,
+>(
+  options: BrowserIssuesReporterOptions<TWireEvent, TRequestBody>,
+): IssuesReporter | null => {
   const browserWindow = options.browserWindow ?? readBrowserWindow();
   if (!browserWindow) return null;
   const tabId =
@@ -159,7 +171,7 @@ export const createBrowserIssuesReporter = (options: BrowserIssuesReporterOption
 
   const { endpoint: _endpoint, release, locale, transport, tabIdStorageKey: _tabIdStorageKey, browserWindow: _browserWindow, ...reporterOptions } =
     options;
-  return createIssuesReporter({
+  return createIssuesReporter<TWireEvent, TRequestBody>({
     isInAppFile,
     isAutomated: () => browserWindow.navigator?.webdriver === true,
     ...reporterOptions,

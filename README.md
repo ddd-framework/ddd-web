@@ -183,11 +183,15 @@ import { createNodeIssuesReporter, createServerRequestErrorHandler } from '@mgam
 
 const serverIssuesReporter = createNodeIssuesReporter({
   app: 'web',
-  apiBaseUrl: process.env.API_INTERNAL_URL,
+  apiBaseUrl: process.env.API_INTERNAL_URL, // + the default report path; or `endpoint` = the full URL (wins)
   serverToken: process.env.ISSUES_INGEST_SERVER_TOKEN, // the backend files these as WEB_SERVER
 });
 export const onRequestError = createServerRequestErrorHandler(() => serverIssuesReporter);
 ```
+
+Both adapters are generic over the wire types like the core: a `wire` built from your generated models
+(`createNodeIssuesReporter({ …, wire: appIssuesWire })`) types the event and the body with them; without it the
+DDD defaults apply.
 
 React Native and other runtimes use `createIssuesReporter` from `/issues` with `createFetchIssuesTransport()`.
 Everything is redacted on the device (tokens in paths and queries, e-mails, bearer / JWT tokens, UUIDs, phone numbers),

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.16.1
+
+### Changed
+- `createBrowserIssuesReporter` / `createNodeIssuesReporter` and `BrowserIssuesReporterOptions` /
+  `NodeIssuesReporterOptions` are generic over the wire event and request-body types, defaulting to the DDD ones: a
+  `wire` built from your generated models now type-checks with the adapters, not only with `createIssuesReporter`.
+  Existing calls compile unchanged.
+
+### Added
+- `NodeIssuesReporterOptions.endpoint` (string or function): the full URL of the ingest endpoint; wins over
+  `apiBaseUrl` when both are set. `apiBaseUrl` keeps its behaviour (a function returns the full URL) for compatibility.
+  The browser reporter already takes `endpoint` and has no `apiBaseUrl`.
+
 ## 0.16.0
 
 ### Added

@@ -28,6 +28,39 @@ const createFakeReporter = () => {
 };
 
 describe('issues node adapter', () => {
+  it('sends to `endpoint` as the full URL, which wins over apiBaseUrl', async () => {
+    const urls: string[] = [];
+    const { clock, advance } = createFakeIssuesClock();
+    const transport = async (request: IssuesTransportRequest) => {
+      urls.push(request.url);
+      return { status: 200 };
+    };
+    let currentEndpoint: string | null = 'https://api.example.com/custom/report';
+    const withFunction = createNodeIssuesReporter({
+      app: 'web',
+      endpoint: () => currentEndpoint,
+      apiBaseUrl: 'http://ignored.internal',
+      clock,
+      transport,
+    });
+    withFunction.captureError(new Error('first'));
+    await advance(2_000);
+    currentEndpoint = null;
+    withFunction.captureError(new Error('second'));
+    await advance(2_000);
+    const withString = createNodeIssuesReporter({ app: 'web', endpoint: 'https://api.example.com/other', clock, transport });
+    withString.captureError(new Error('third'));
+    await advance(2_000);
+    const fallsBack = createNodeIssuesReporter({ app: 'web', endpoint: null, apiBaseUrl: 'http://api.internal', clock, transport });
+    fallsBack.captureError(new Error('fourth'));
+    await advance(2_000);
+    expect(urls).toEqual([
+      'https://api.example.com/custom/report',
+      'https://api.example.com/other',
+      'http://api.internal/api/public/common/issues/report',
+    ]);
+  });
+
   it('sends to <apiBaseUrl><reportPath> with the server token, Node user agent and release', async () => {
     const requests: IssuesTransportRequest[] = [];
     const { clock, advance } = createFakeIssuesClock();

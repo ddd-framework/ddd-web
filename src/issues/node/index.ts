@@ -24,18 +24,32 @@ interface NodeProcessLike {
 const readNodeProcess = (): NodeProcessLike | null =>
   ((globalThis as { process?: NodeProcessLike }).process as NodeProcessLike | undefined) ?? null;
 
-type NodeReporterBaseOptions = Omit<
-  IssuesReporterOptions<DddClientIssueEvent, DddClientIssuesReportRequestBody>,
+type NodeReporterBaseOptions<TWireEvent, TRequestBody> = Omit<
+  IssuesReporterOptions<TWireEvent, TRequestBody>,
   'runtime' | 'endpoint' | 'transport' | 'context'
 >;
 
-export interface NodeIssuesReporterOptions extends NodeReporterBaseOptions {
+/**
+ * Generic over the wire types like {@link IssuesReporterOptions}: the defaults are the DDD contract; a `wire` built
+ * from your generated models types the event and the body with them.
+ */
+export interface NodeIssuesReporterOptions<
+  TWireEvent = DddClientIssueEvent,
+  TRequestBody = DddClientIssuesReportRequestBody,
+> extends NodeReporterBaseOptions<TWireEvent, TRequestBody> {
   /**
-   * The API origin (`https://api.example.com`, a cluster-internal URL) — the report goes to
-   * `<apiBaseUrl><reportPath>` — or a function returning the full endpoint URL. Null / empty = nothing is sent.
+   * The full URL of the ingest endpoint (`https://api.example.com/api/public/common/issues/report`), or a function
+   * returning it, read at send time. Wins over `apiBaseUrl` when both are set; a function returning null / empty sends
+   * nothing. Unset (or null / empty) = `apiBaseUrl` decides.
+   */
+  endpoint?: string | null | (() => string | null | undefined);
+  /**
+   * The API origin (`https://api.example.com`, a cluster-internal URL): the report goes to `<apiBaseUrl><reportPath>`.
+   * Kept for compatibility: as a FUNCTION it returns the full endpoint URL, not a base URL — use `endpoint` for that.
+   * Ignored when `endpoint` is set. Null / empty = nothing is sent.
    */
   apiBaseUrl?: string | null | (() => string | null | undefined);
-  /** Default {@link DDD_ISSUES_REPORT_PATH} */
+  /** Appended to a string `apiBaseUrl`. Default {@link DDD_ISSUES_REPORT_PATH} */
   reportPath?: string;
   /** The release the backend files the error under (and looks the server's source maps up by). */
   release?: () => string | null | undefined;
@@ -50,14 +64,22 @@ export interface NodeIssuesReporterOptions extends NodeReporterBaseOptions {
  * files = everything outside `node_modules` and `node:` built-ins. Without `serverToken` the backend files the reports
  * as a browser's (WEB) — or drops them, when the application requires the token for server reports.
  */
-export const createNodeIssuesReporter = (options: NodeIssuesReporterOptions): IssuesReporter => {
-  const { apiBaseUrl, reportPath, release, transport, requestTimeoutMs, ...reporterOptions } = options;
+export const createNodeIssuesReporter = <
+  TWireEvent = DddClientIssueEvent,
+  TRequestBody = DddClientIssuesReportRequestBody,
+>(
+  options: NodeIssuesReporterOptions<TWireEvent, TRequestBody>,
+): IssuesReporter => {
+  const { endpoint, apiBaseUrl, reportPath, release, transport, requestTimeoutMs, ...reporterOptions } = options;
   const resolveEndpoint = (): string | null => {
+    if (endpoint !== undefined && endpoint !== null && endpoint !== '') {
+      return (typeof endpoint === 'function' ? endpoint() : endpoint) || null;
+    }
     if (typeof apiBaseUrl === 'function') return apiBaseUrl() || null;
     if (!apiBaseUrl) return null;
     return `${apiBaseUrl.replace(/\/+$/, '')}${reportPath ?? DDD_ISSUES_REPORT_PATH}`;
   };
-  return createIssuesReporter({
+  return createIssuesReporter<TWireEvent, TRequestBody>({
     isInAppFile: (file) => !file.includes('/node_modules/'),
     ...reporterOptions,
     runtime: 'node',
