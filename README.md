@@ -54,6 +54,11 @@ Subpaths: `@mgamadeus/ddd-web/codegen`, `/query`, `/api`, `/auth`, `/contract`, 
 (pages whose global `Request` is not the Fetch API's, e.g. MooTools or Prototype: `dddFetchApiRequestPlugin()`) and
 `/issues`, `/issues/browser`, `/issues/node`, `/issues/wire` (client errors, below).
 
+The package is an ES module. A CommonJS script may `require()` the entries without runtime dependencies — `/contract`,
+`/query`, `/auth`, `/fetch-api-request`, `/issues`, `/issues/browser`, `/issues/node`, `/issues/wire` — on Node
+≥ 20.19 or ≥ 22.12 (Node's require of an ES module; none of them uses top-level await). `/api` (RTK Query), `/vite`
+and `/codegen` are import-only.
+
 ### File downloads
 
 Endpoints whose 2xx responses are files (`application/octet-stream`, `application/zip`, `application/pdf`,

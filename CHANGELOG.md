@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.17.1
+
+### Fixed
+- A CommonJS script that loads code importing `@mgamadeus/ddd-web/contract` no longer fails with
+  `ERR_PACKAGE_PATH_NOT_EXPORTED`: the entries without runtime dependencies (`/contract`, `/query`, `/auth`,
+  `/fetch-api-request`, `/issues`, `/issues/browser`, `/issues/node`, `/issues/wire`) have a `default` condition on
+  their ES module build, so `require()` loads them on Node ≥ 20.19 / ≥ 22.12 (require of an ES module; no entry uses
+  top-level await). On an older Node 20 the error is now `ERR_REQUIRE_ESM`.
+- No CommonJS build: one module instance per entry, no dual-package state. `/api` (RTK Query peer dependency),
+  `/vite` and `/codegen` stay import-only.
+
+### Tests
+- The consumer check requires every entry with a `default` condition from a CommonJS script against the packed
+  tarball (`test/consumer/smoke-require.cjs`); a manifest test pins which entries are requirable.
+
 ## 0.17.0
 
 ### Changed

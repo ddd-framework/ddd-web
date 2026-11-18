@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Installs a packed @mgamadeus/ddd-web tarball into a fresh consumer project and checks it as a user would:
 #   1. every exports / bin target exists in the tarball (scripts/check-package.mjs)
-#   2. every subpath imports at runtime (smoke.mjs)
+#   2. every subpath imports at runtime (smoke.mjs), and every subpath with a `default` condition loads with require()
+#      from a CommonJS script (smoke-require.cjs)
 #   3. a strict TypeScript consumer importing every subpath compiles with moduleResolution bundler and nodenext
 #   4. ddd-web-sdk generates an SDK from the sample spec, for bundler and for nodenext (esmExtensions), and the
 #      generated code type-checks
@@ -23,7 +24,7 @@ node "$ROOT/scripts/check-package.mjs" "$WORK/extracted/package"
 
 APP="$WORK/app"
 mkdir -p "$APP"
-cp "$HERE/smoke.mjs" "$HERE/consumer.ts" "$ROOT/test/fixtures/specs/sample-admin.json" "$APP/"
+cp "$HERE/smoke.mjs" "$HERE/smoke-require.cjs" "$HERE/consumer.ts" "$ROOT/test/fixtures/specs/sample-admin.json" "$APP/"
 cd "$APP"
 echo '{"name":"consumer","private":true,"type":"module"}' > package.json
 DEPS=("$TARBALL" @reduxjs/toolkit react react-redux @types/react typescript @types/node)
@@ -32,6 +33,8 @@ if [ "$PM" = npm ]; then npm install --no-audit --no-fund "${DEPS[@]}"; else pnp
 
 echo "── runtime imports"
 node smoke.mjs
+echo "── runtime require() from CommonJS"
+node smoke-require.cjs
 
 for MODE in bundler nodenext; do
   if [ "$MODE" = bundler ]; then MODULE=esnext; ESM=false; else MODULE=nodenext; ESM=true; fi

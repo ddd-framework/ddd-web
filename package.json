@@ -1,6 +1,6 @@
 {
   "name": "@mgamadeus/ddd-web",
-  "version": "0.17.0",
+  "version": "0.17.1",
   "description": "TypeScript web client for backends built with mgamadeus/ddd, the DDD entity framework for Symfony and Doctrine (Composer/Packagist). Generates a typed RTK Query SDK from the backend's OpenAPI document, builds DDD QueryOptions (filters, orderBy, expand, select, paging) and handles JWT auth with token refresh.",
   "keywords": [
     "ddd",
@@ -31,11 +31,13 @@
   "exports": {
     "./contract": {
       "types": "./dist/contract/index.d.ts",
-      "import": "./dist/contract/index.js"
+      "import": "./dist/contract/index.js",
+      "default": "./dist/contract/index.js"
     },
     "./query": {
       "types": "./dist/query/index.d.ts",
-      "import": "./dist/query/index.js"
+      "import": "./dist/query/index.js",
+      "default": "./dist/query/index.js"
     },
     "./api": {
       "types": "./dist/api/index.d.ts",
@@ -43,27 +45,33 @@
     },
     "./auth": {
       "types": "./dist/auth/index.d.ts",
-      "import": "./dist/auth/index.js"
+      "import": "./dist/auth/index.js",
+      "default": "./dist/auth/index.js"
     },
     "./fetch-api-request": {
       "types": "./dist/fetch-api-request/index.d.ts",
-      "import": "./dist/fetch-api-request/index.js"
+      "import": "./dist/fetch-api-request/index.js",
+      "default": "./dist/fetch-api-request/index.js"
     },
     "./issues": {
       "types": "./dist/issues/index.d.ts",
-      "import": "./dist/issues/index.js"
+      "import": "./dist/issues/index.js",
+      "default": "./dist/issues/index.js"
     },
     "./issues/browser": {
       "types": "./dist/issues/browser/index.d.ts",
-      "import": "./dist/issues/browser/index.js"
+      "import": "./dist/issues/browser/index.js",
+      "default": "./dist/issues/browser/index.js"
     },
     "./issues/node": {
       "types": "./dist/issues/node/index.d.ts",
-      "import": "./dist/issues/node/index.js"
+      "import": "./dist/issues/node/index.js",
+      "default": "./dist/issues/node/index.js"
     },
     "./issues/wire": {
       "types": "./dist/issues/wire/index.d.ts",
-      "import": "./dist/issues/wire/index.js"
+      "import": "./dist/issues/wire/index.js",
+      "default": "./dist/issues/wire/index.js"
     },
     "./vite": {
       "types": "./dist/vite/index.d.ts",
