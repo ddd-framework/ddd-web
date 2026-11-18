@@ -1,9 +1,9 @@
 ---
 name: ddd-web-specialist
-description: "Use and maintain @mgamadeus/ddd-web, the TS client of mgamadeus/ddd: openapi-config.ts defineConfig (schemaFile, sideEffects, responseHandlers, invalidation), the RTK Query SDK from ddd-web-sdk (cache tags by entity identity, mergeDddTagTypes, blob downloads, multipartFiles uploads, progress via baseQuery.upload), QueryOptions builders, createDddBaseQuery (Bearer, shared refresh + retry, relogin, session-bound requests, normalizeDddError), token storage, JWT helpers, foreign global Request (MooTools: dddFetchApiRequestPlugin), the client-errors reporter /issues (browser, Node, React Native), link-skills, release. Use when wiring a frontend to a DDD backend, regenerating the SDK, building filters, uploading files, FormData, upload or download progress, fixing token refresh, guest login, a request sent under the wrong account after a switch, stale cache tags, downloading an export, requests failing in a legacy page, reporting web, server or mobile errors to the issues log, or releasing ddd-web."
+description: "Use and maintain @mgamadeus/ddd-web, the TS client of mgamadeus/ddd: openapi-config.ts defineConfig (schemaFile, sideEffects, responseHandlers, invalidation), the RTK Query SDK from ddd-web-sdk (cache tags by entity identity, mergeDddTagTypes, blob downloads, multipartFiles uploads, progress via baseQuery.upload), QueryOptions builders, createDddBaseQuery (Bearer, shared refresh + retry, relogin, session-bound requests, normalizeDddError), token storage, JWT helpers, foreign global Request (MooTools: dddFetchApiRequestPlugin), the client-errors reporter /issues (browser, Node, React Native), link-skills (all DDD skills, --check), release. Use when wiring a frontend to a DDD API, regenerating the SDK, building filters, uploading files, FormData, upload or download progress, fixing token refresh, guest login, a request sent under the wrong account after a switch, stale cache tags, downloading an export, requests failing in a legacy page, reporting errors to the issues log, linking skills, or releasing ddd-web."
 metadata:
   author: mgamadeus
-  version: "1.5.0"
+  version: "1.6.0"
   package: "@mgamadeus/ddd-web"
 ---
 
@@ -70,7 +70,7 @@ export default defineConfig({
 
 ```sh
 pnpm exec ddd-web-sdk           # writes adminApi.ts, adminApiEnhanced.ts, adminApiTags.ts and ../models
-pnpm exec ddd-web link-skills   # links this skill into .claude/skills/
+pnpm exec ddd-web link-skills   # links the skills of all DDD packages into the repo's .claude/skills/ (postinstall)
 ```
 
 Import `adminApiEnhanced` once (e.g. in the store setup) and use the hooks from `adminApi`:

@@ -18,8 +18,16 @@ export type {
 export { broadInvalidation } from './enhance';
 export { generateSdk } from './generate';
 export type { GenerateSdkOptions, GenerateSdkResult } from './generate';
-export { linkSkills } from './link-skills';
-export type { LinkSkillAction, LinkSkillsOptions, LinkSkillsResult } from './link-skills';
+export { findSkillsRepositoryRoot, linkSkills, runSkillLinks } from './link-skills';
+export type {
+  LinkSkillAction,
+  LinkSkillsOptions,
+  LinkSkillsResult,
+  SkillLinksOptions,
+  SkillLinksReport,
+  SkillsManifest,
+  SkillsManifestEntry,
+} from './link-skills';
 export { consoleLogger, SdkGenerationError, silentLogger } from './log';
 export type { Logger } from './log';
 export { loadSpec, validateSpec, SUPPORTED_CONTRACT } from './spec';

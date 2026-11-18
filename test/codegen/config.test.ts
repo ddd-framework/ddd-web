@@ -92,7 +92,7 @@ describe('linkSkills', () => {
     ]);
   });
 
-  it('says clearly when the installed package ships no skills', () => {
+  it('says clearly when no installed package ships skills and creates nothing', () => {
     const app = tempDir();
     const packageDir = path.join(app, 'node_modules', '@mgamadeus', 'ddd-web');
     fs.mkdirSync(packageDir, { recursive: true });
@@ -103,14 +103,14 @@ describe('linkSkills', () => {
     fs.mkdirSync(path.join(packageDir, '.claude', 'skills'), { recursive: true });
     expect(linkSkills({ cwd: app, logger })).toEqual([]);
     expect(messages).toHaveLength(2);
-    for (const message of messages) expect(message).toMatch(/@mgamadeus\/ddd-web 9\.9\.9 ships no agent skills.*nothing to link/);
+    for (const message of messages) expect(message).toMatch(/no DDD package ships agent skills.*nothing to link/);
     expect(fs.existsSync(path.join(app, '.claude'))).toBe(false);
   });
 
-  it('says clearly when the package is not installed', () => {
+  it('says clearly when no DDD package is installed', () => {
     const app = tempDir();
     const messages: string[] = [];
     linkSkills({ cwd: app, logger: { info: (m) => messages.push(m), warn: (m) => messages.push(m), error: () => {} } });
-    expect(messages.join('\n')).toMatch(/not installed/);
+    expect(messages.join('\n')).toMatch(/no DDD package ships agent skills/);
   });
 });

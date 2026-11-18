@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.17.0
+
+### Changed
+- `ddd-web link-skills` is now the vendor skill links tool shared with `ddd-link-skills` of mgamadeus/ddd 3.36.0
+  (same behaviour, output and manifest; spec in the README, "Agent skills"):
+  - finds the repository root (nearest ancestor with `.git`, else `.claude`; `--root`, `DDD_SKILLS_ROOT`), so the
+    postinstall of a frontend in a subfolder links into the repository's `.claude/skills`, not `web/.claude/skills`;
+  - links the skills of every `node_modules/@mgamadeus/*` AND `vendor/mgamadeus/*` package up to three levels below
+    the root, not only this package's; a name shipped by two packages is reported as a clash;
+  - writes into the real location when `.claude` or `.claude/skills` is a symlink, mirrors into existing real
+    `.agents/skills` / `.codex/skills` folders (`../../.claude/skills/<name>`), never creates or changes a mirror
+    layout;
+  - removes broken links into DDD vendor areas (skill or package removed); app skills, real folders and foreign
+    symlinks are never touched;
+  - records each link in `<primary>/.ddd-skills.json` and keeps a `# ddd-skills:start` … `# ddd-skills:end` block in
+    the `.gitignore` files; reports generated links git still tracks with the `git rm --cached` command;
+  - output prefixed `[ddd-skills]`, one line per change; a normal run exits 0 (warnings), 1 only on a write error.
+- `linkSkills()` keeps its signature and result (`linked` / `relinked` / `unchanged` / `skipped`, now with
+  `package`); `cwd` is where the root search starts; `sourceDir` is deprecated.
+
+### Added
+- `ddd-web link-skills --check` (CI, session start: exit 1 on missing, stale or broken links, outdated manifest or
+  gitignore block, clashes, tracked generated links, edited vendor skills), `--dry-run`, `--quiet`, `--root <dir>`.
+- `runSkillLinks()`, `findSkillsRepositoryRoot()` and the types `SkillLinksOptions`, `SkillLinksReport`,
+  `SkillsManifest`, `SkillsManifestEntry` from `/codegen`.
+
+### App side
+- `web/package.json`: `"postinstall": "ddd-web link-skills"`; with a Composer backend also
+  `"@php vendor/bin/ddd-link-skills"` in `post-install-cmd` / `post-update-cmd` (either hook alone links everything).
+- Once: untrack the formerly hand-made links the tool lists (`git rm --cached -- …`) and commit them with the new
+  `.gitignore` blocks; add `ddd-web link-skills --check` to CI.
+
 ## 0.16.2
 
 ### Fixed

@@ -31,6 +31,8 @@ test/         vitest suites per subpath; fixtures/specs/sample-admin.json (neutr
               consumer/ (installed-package check); fixtures/private/ is ignored — never commit app specs
 scripts/      clean.mjs (dist cleaned once before tsup), check-package.mjs (exports / bin targets, --require-skills)
 .claude/skills/ddd-web-specialist/   this skill — shipped in the tarball, linked into apps by `ddd-web link-skills`
+              (link-skills.ts mirrors `ddd-link-skills` of mgamadeus/ddd: a behaviour change lands in both
+              implementations and both test suites, same fixture layouts)
 ```
 
 Each subpath is its own tsup entry with its own `.d.ts`; `codegen` is Node-only and must never be imported from the

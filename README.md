@@ -47,7 +47,7 @@ export default defineConfig({
 
 ```sh
 pnpm exec ddd-web-sdk            # generate the SDK
-pnpm exec ddd-web link-skills    # link the package's agent skills into .claude/skills
+pnpm exec ddd-web link-skills    # link the agent skills of all DDD packages into .claude/skills
 ```
 
 Subpaths: `@mgamadeus/ddd-web/codegen`, `/query`, `/api`, `/auth`, `/contract`, `/fetch-api-request`, `/vite`
@@ -198,10 +198,112 @@ Everything is redacted on the device (tokens in paths and queries, e-mails, bear
 known noise is dropped, repeats are folded into `count`, and caps, batching, retry and backoff keep a broken page from
 flooding the endpoint. Details: the agent skill, `references/consumer.md` › Client errors.
 
-## Agent skill
+## Agent skills (`link-skills`)
 
-The package ships the agent skill `ddd-web-specialist` (consumer guide + maintaining guide). Link it into an app's
-`.claude/skills` with `pnpm exec ddd-web link-skills`.
+The package ships the agent skill `ddd-web-specialist` (consumer guide + maintaining guide). `ddd-web link-skills`
+links it — and the skills of every other DDD package installed through npm or Composer — into the repository's
+`.claude/skills`:
+
+```sh
+ddd-web link-skills [--check] [--dry-run] [--quiet] [--root <dir>]
+```
+
+```json
+{ "scripts": { "postinstall": "ddd-web link-skills" } }
+```
+
+Programmatic: `runSkillLinks({ cwd, root, check, dryRun, quiet, logger })` from `/codegen` returns a report with
+`exitCode`, `skills`, `lines` and `problems`; `linkSkills()` (one result per skill) stays for existing callers.
+
+### Vendor skill links — behaviour (shared by `ddd-link-skills` and `ddd-web link-skills`)
+
+DDD packages ship agent skills at `<package>/.claude/skills/<name>/SKILL.md`. `ddd-link-skills` (Composer package
+`mgamadeus/ddd`) and `ddd-web link-skills` (npm package `@mgamadeus/ddd-web`) generate and maintain the links to them.
+Both behave identically, print the same lines and read and write the same manifest, so a Composer hook and an npm
+postinstall never fight; either one alone links everything.
+
+1. **Root**: the nearest ancestor of the working directory (itself included) that contains `.git` (folder or file),
+   else the nearest that contains `.claude` (never the home folder), else the working directory. `--root <dir>` or the
+   env variable `DDD_SKILLS_ROOT` override it. The install may run in a subfolder (Composer in `app/`, npm in `web/`).
+2. **Discovery**: every `vendor/mgamadeus/*` and `node_modules/@mgamadeus/*` whose `vendor/` / `node_modules/` folder
+   lies at most three levels below the root (`vendor/`, `app/vendor/`, `apps/admin/node_modules/`); other `vendor/`,
+   `node_modules/` and dot folders are not searched, symlinked folders are not followed. A skill is a folder with a
+   `SKILL.md`. Order: skill path, byte order. The same name from two packages is a clash: the first is kept and the
+   clash reported. The same package installed twice (two Composer roots) is not a clash.
+3. **Primary folder** `<root>/.claude/skills`, created when missing. When `.claude` or `.claude/skills` is a symlink
+   (for example to `.codex`), the links go into its real location, once.
+4. **Mirrors** `<root>/.agents/skills` and `<root>/.codex/skills` (Codex): the layout is detected, never changed. A
+   missing mirror is not created; a mirror (or its parent) that resolves to the primary folder gets nothing; a mirror
+   that is a real folder gets one link per skill, `../../.claude/skills/<name>`, pointing to the primary entry.
+5. **Links**: relative targets from the link's real folder to the skill folder, for example
+   `../../app/vendor/mgamadeus/ddd/.claude/skills/ddd-entity-specialist`. Idempotent; a link into a DDD vendor area
+   with another target is repointed. A real file or folder, or a symlink that points elsewhere, is never touched: it
+   is reported as a clash with the app's own skill.
+6. **Cleanup**: broken symlinks in the primary folder and the mirrors whose target lies in a `vendor/mgamadeus/` or
+   `node_modules/@mgamadeus/` path are deleted (skill no longer shipped, package removed), and so are mirror links to
+   primary entries that were removed. Only symlinks; app skills and real folders stay.
+7. **Manifest** `<primary>/.ddd-skills.json` (format below), rewritten only when its content changes. An entry whose
+   link still resolves but whose package was not found by this run (another install tree) is kept.
+8. **Git**: a managed block in `<primary>/.gitignore` and in each real mirror folder's `.gitignore` lists the generated
+   link names (and, in the primary, the manifest); everything outside the block stays. Nothing is removed from git:
+   generated links that git still tracks are reported with the exact `git rm --cached -- …` command.
+9. **`--check`**: changes nothing and exits 1, with a list, on missing links, stale targets, broken DDD links, an
+   outdated manifest or gitignore block, clashes, generated paths still tracked, and edited vendor skills (same package
+   version as in the manifest, different SKILL.md hash; a normal run warns and keeps the recorded hash, so the check
+   keeps failing until the package is reinstalled). `--dry-run` prints what would change; `--quiet` prints only
+   warnings and problems.
+10. **Output and exit code**: one line per change, prefixed `[ddd-skills]`. A normal run always exits 0 (clashes and
+    tracked links are warnings), except on an unexpected error writing the folder (exit 1).
+
+Manifest:
+
+```json
+{
+    "format": 1,
+    "skills": {
+        "ddd-entity-specialist": {
+            "package": "mgamadeus/ddd",
+            "version": "3.36.0",
+            "source": "app/vendor/mgamadeus/ddd/.claude/skills/ddd-entity-specialist",
+            "target": "../../app/vendor/mgamadeus/ddd/.claude/skills/ddd-entity-specialist",
+            "sha256": "<sha256 of SKILL.md>",
+            "mirrors": [".agents/skills"]
+        }
+    }
+}
+```
+
+`version` comes from `vendor/composer/installed.json` (else the package's `composer.json`) or the package's
+`package.json`; `source` is relative to the root. Both tools write it byte-identically (4-space JSON, names sorted,
+trailing newline).
+
+Gitignore block:
+
+```gitignore
+# ddd-skills:start
+# Generated by ddd-link-skills / ddd-web link-skills; rewritten on every install.
+/.ddd-skills.json
+/ddd-entity-specialist
+# ddd-skills:end
+```
+
+### App-side setup
+
+For an app whose Composer root is `app/` and whose frontend is `web/`:
+
+1. `app/composer.json`, alongside the existing scripts:
+   ```json
+   "scripts": {
+       "post-install-cmd": ["@php vendor/bin/ddd-link-skills", "..."],
+       "post-update-cmd": ["@php vendor/bin/ddd-link-skills", "..."]
+   }
+   ```
+2. `web/package.json`: `"postinstall": "ddd-web link-skills"` (an app that installs with `ignore-scripts` relies on
+   the Composer hook, which links the npm skills too).
+3. Run the install once, then untrack the formerly hand-made links the tool reports
+   (`git rm --cached -- .claude/skills/ddd-entity-specialist …`) and commit together with the new `.gitignore` blocks.
+4. CI or session start: `php app/vendor/bin/ddd-link-skills --check` (or `pnpm --dir web exec ddd-web link-skills
+   --check`).
 
 ## Development
 

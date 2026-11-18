@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 import { parseArgs } from 'node:util';
 import { generateSdk } from './generate';
-import { linkSkills } from './link-skills';
+import { runSkillLinks } from './link-skills';
 import { consoleLogger, SdkGenerationError } from './log';
 
 const HELP = `Usage:
   ddd-web-sdk [options]            Generate the RTK Query SDK (same as "ddd-web sdk")
   ddd-web sdk [options]
-  ddd-web link-skills              Symlink the package's agent skills into .claude/skills/
+  ddd-web link-skills [options]    Link the agent skills of every installed DDD package into .claude/skills/
 
 SDK options:
   --config <path>       Config file (default: openapi-config.ts)
@@ -17,6 +17,13 @@ SDK options:
   --skip-prettier       Do not format the generated files
   --skip-tsc            Do not run tsc --noEmit after generation
   -h, --help            Show this help
+
+link-skills options:
+  --check               Change nothing; exit 1 on missing, stale or broken links, clashes, generated links still
+                        tracked by git and edited vendor skills
+  --dry-run             Print what would change, change nothing
+  --quiet               Print only warnings and problems
+  --root <dir>          Repository root (default: nearest ancestor with .git, else with .claude; env DDD_SKILLS_ROOT)
 `;
 
 async function main(argv: string[]): Promise<number> {
@@ -29,8 +36,27 @@ async function main(argv: string[]): Promise<number> {
     return 0;
   }
   if (command === 'link-skills') {
-    linkSkills();
-    return 0;
+    const { values: linkValues } = parseArgs({
+      args,
+      options: {
+        check: { type: 'boolean' },
+        'dry-run': { type: 'boolean' },
+        quiet: { type: 'boolean', short: 'q' },
+        root: { type: 'string' },
+        help: { type: 'boolean', short: 'h' },
+      },
+      strict: true,
+    });
+    if (linkValues.help) {
+      process.stdout.write(HELP);
+      return 0;
+    }
+    return runSkillLinks({
+      ...(linkValues.root ? { root: linkValues.root } : {}),
+      check: linkValues.check ?? false,
+      dryRun: linkValues['dry-run'] ?? false,
+      quiet: linkValues.quiet ?? false,
+    }).exitCode;
   }
 
   const { values } = parseArgs({

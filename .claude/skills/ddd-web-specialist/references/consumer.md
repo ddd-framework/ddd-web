@@ -83,7 +83,7 @@ ddd-web-sdk [options]        (same as: ddd-web sdk [options])
   --workspace <value>   value for config.workspace.envVar (alias --subdomain)
   --skip-prettier       do not format the generated files
   --skip-tsc            do not type-check after generation
-ddd-web link-skills     link the package's agent skills into .claude/skills/
+ddd-web link-skills     link the agent skills of all DDD packages into .claude/skills/ (--check, --dry-run, --quiet, --root)
 ```
 
 Pipeline: load every spec once → validate the DDD contract parts → namespace registry from the `SchemaDefinition`
@@ -546,9 +546,29 @@ Behaviour:
 
 ## 8. Agent skills (`link-skills`)
 
-`pnpm exec ddd-web link-skills` symlinks every skill directory of the installed package into `.claude/skills/`.
-Idempotent; an existing symlink is repointed, a real file or directory is never touched. Run it after install (e.g. in
-`postinstall`) and commit the symlinks if the app versions its `.claude/skills`.
+`ddd-web link-skills` generates the links to the agent skills of every DDD package — `node_modules/@mgamadeus/*` and
+`vendor/mgamadeus/*` up to three levels below the repository root — in the repository's `.claude/skills`. Its twin
+`ddd-link-skills` of mgamadeus/ddd behaves identically and shares the manifest, so either hook alone links
+everything.
+
+Wiring: `"postinstall": "ddd-web link-skills"` in the frontend's `package.json`; with a Composer backend also
+`"@php vendor/bin/ddd-link-skills"` in `post-install-cmd` / `post-update-cmd`. Once: untrack the hand-made links the
+tool lists (`git rm --cached -- …`) and commit with the generated `.gitignore` blocks. CI / session start:
+`ddd-web link-skills --check`.
+
+Rules worth knowing:
+- Root = nearest ancestor with `.git`, else `.claude` (never the home folder); `--root` / `DDD_SKILLS_ROOT`.
+- Relative targets, written into the real location when `.claude` or `.claude/skills` is a symlink; existing real
+  `.agents/skills` / `.codex/skills` get `../../.claude/skills/<name>`; missing mirrors are never created.
+- An app skill (real folder or foreign symlink) of the same name wins and is reported as a clash; broken links into
+  DDD vendor areas are removed.
+- `<primary>/.ddd-skills.json` records package, version, sha256 of SKILL.md and mirrors per link; a `# ddd-skills:start`
+  … `# ddd-skills:end` block in the `.gitignore` files lists the generated names.
+- `--check` exits 1 on missing, stale or broken links, outdated manifest or gitignore block, clashes, tracked generated
+  links and edited vendor skills; a normal run only warns and exits 0.
+- Programmatic: `runSkillLinks({ cwd, root, check, dryRun, quiet, logger })` → `{ exitCode, skills, lines, problems }`.
+
+Full spec: the package README, "Agent skills (`link-skills`)".
 
 ## 9. Troubleshooting
 
