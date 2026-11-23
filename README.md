@@ -203,6 +203,14 @@ Everything is redacted on the device (tokens in paths and queries, e-mails, bear
 known noise is dropped, repeats are folded into `count`, and caps, batching, retry and backoff keep a broken page from
 flooding the endpoint. Details: the agent skill, `references/consumer.md` › Client errors.
 
+## Untrusted content
+
+Generated clients return what the backend sends, including text and files users, mail, third parties or a model wrote.
+Treat it as foreign: never pass it to `dangerouslySetInnerHTML`, `eval`, `new Function` or an `iframe` with
+`allow-same-origin`; open foreign files through their download URLs (the backend serves them with
+`UntrustedContentResponseDto`: attachment, `nosniff`, `CSP: sandbox`). The backend rule and its helpers: skill
+`ddd-untrusted-input-specialist` of `mgamadeus/ddd`.
+
 ## Agent skills (`link-skills`)
 
 The package ships the agent skill `ddd-web-specialist` (consumer guide + maintaining guide). `ddd-web link-skills`
