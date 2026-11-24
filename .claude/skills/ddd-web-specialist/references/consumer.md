@@ -44,6 +44,7 @@ too). A plain RTK-codegen file with `export const apis = [...]` is accepted as w
 
 | Option | Meaning |
 |---|---|
+| `generator` | Select `{ mode: "future" }` or `{ mode: "legacy" }` for the consumer-installed SDK generator. The existing DDD RTK Query engine is the default. |
 | `modelsDir` | Model output directory. Default `<dir of the first outputFile>/../models`; without it every api must share one output directory. |
 | `skipUpdatePostTwins` | DDD `#[Update]` serves the same route as PATCH and POST; `true` generates only the PATCH hook. With `x-ddd-entity` both must be `upsert` of the same entity; without it summary, parameters, body and responses must be identical. Conflicting annotations never skip. Default `false` (keep it `false` when app code already calls the POST hooks). |
 | `sideEffects` | `SideEffectsOverride[]` for specs without `x-ddd-side-effects`: `{ method?, path: string \| RegExp, sideEffects, endpointType? }`. A writing GET becomes a mutation, a reading POST a query; `endpointType: 'mutation'` keeps a reading POST a mutation that invalidates nothing. |
@@ -93,6 +94,20 @@ keeps its models from the previous output, with a warning). Programmatic use: `g
 skipTsc, logger })` from `/codegen`.
 
 Add a script: `"gen:sdk": "ddd-web-sdk"`. Commit the generated files and, if you use snapshots, the snapshot.
+
+### Opt-in generation
+
+Select `--mode future` or `--mode legacy` to override the configured mode for a run. Future mode needs
+`swagger-sdk-generator@^3` as an app dependency. Legacy mode needs `swagger-sdk-generator@^3.1`. Legacy output uses Redux Toolkit, RxJS, Faker, and the configured model aliases.
+
+Output goes to `src/generated-sdk/<mode>/<output-file-stem>/` unless `generator.outputDir` sets another base.
+Use `generator.outputs` to pass model, client, store or mock options supported by the selected mode. Future
+mode generates a promise client and models. Set `outputs.mocks: {}` to add seeded mocks. Set
+`outputs.client.transport: 'none'` to require an injected transport. Pass a custom transport or use
+`createAxiosTransport` from `swagger-sdk-generator/runtime` with the app’s own Axios instance.
+
+The opt-in modes use bundler-style TypeScript module resolution. They retain DDD document validation,
+path-parameter repair, `skipUpdatePostTwins` and type-check rollback. DDD RTK-specific options apply in default mode.
 
 ## 3. Generated files and cache tags
 

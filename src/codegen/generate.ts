@@ -9,7 +9,9 @@ import {
   type LoadedConfig,
   type ResolvedApi,
   type SdkConfig,
+  type SdkGeneratorMode,
 } from './config';
+import { generateDelegatedSdk } from './delegated-sdk';
 import { prepareDocumentForEndpoints, restoreEndpointNames } from './document-endpoints';
 import { prepareDocumentForModels } from './document-models';
 import { buildEnhancedEndpoints } from './enhance';
@@ -34,6 +36,8 @@ import { resolveWorkspace } from './workspace';
 export interface GenerateSdkOptions {
   /** Config file path (default `openapi-config.ts`, relative to `cwd`) or an inline config. */
   config?: string | SdkConfig;
+  /** Override the config's SDK generator mode for this run. */
+  mode?: SdkGeneratorMode;
   /** Base directory for a relative config path and for an inline config's relative paths. Default `process.cwd()`. */
   cwd?: string;
   /** Generate only the api with this `exportName` (or output file stem). */
@@ -52,6 +56,8 @@ export interface GenerateSdkResult {
   /** Absolute paths of all written files. */
   files: string[];
   modelsDir: string;
+  /** Model directories for each selected API in an opt-in mode. */
+  modelsByApi?: Record<string, string>;
   typechecked: boolean;
 }
 
@@ -91,6 +97,11 @@ export async function generateSdk(options: GenerateSdkOptions = {}): Promise<Gen
 
   const allApis = resolveApis(loaded);
   const apis = selectApis(allApis, options);
+  const mode = options.mode ?? loaded.config.generator?.mode ?? 'default';
+  if (mode === 'future' || mode === 'legacy') {
+    return generateDelegatedSdk(mode, loaded, allApis, apis, options, logger);
+  }
+  if (mode !== 'default') throw new SdkGenerationError('SDK generator mode must be default, future, or legacy.');
   const modelsDir = resolveModelsDir(loaded, allApis);
   const partial = apis.length < allApis.length;
   logger.info(`${apis.length} api(s): ${apis.map((api) => api.exportName).join(', ')}${partial ? ' (partial run)' : ''}`);

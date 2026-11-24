@@ -38,7 +38,7 @@ export interface CommittedOutput {
  */
 export function commitOutput(
   files: OutputFiles,
-  modelsDir: string,
+  modelsDir: string | undefined,
   stagingParent: string,
   options: CommitOutputOptions = {},
 ): CommittedOutput {
@@ -53,8 +53,8 @@ export function commitOutput(
     fs.mkdirSync(stagedModels, { recursive: true });
     for (const filePath of files.paths()) {
       const content = files.get(filePath)!;
-      const relative = path.relative(modelsDir, filePath);
-      if (!relative.startsWith('..') && !path.isAbsolute(relative)) {
+      const relative = modelsDir === undefined ? undefined : path.relative(modelsDir, filePath);
+      if (relative !== undefined && !relative.startsWith('..') && !path.isAbsolute(relative)) {
         const staged = path.join(stagedModels, relative);
         fs.mkdirSync(path.dirname(staged), { recursive: true });
         fs.writeFileSync(staged, content);
@@ -106,7 +106,9 @@ export function commitOutput(
   };
 
   try {
-    swap(modelsDir, stagedModels, backupModels, () => fs.rmSync(modelsDir, { recursive: true, force: true }));
+    if (modelsDir !== undefined) {
+      swap(modelsDir, stagedModels, backupModels, () => fs.rmSync(modelsDir, { recursive: true, force: true }));
+    }
     for (const single of singles) {
       swap(single.target, single.staged, single.backup, () => fs.rmSync(single.target, { force: true }));
     }

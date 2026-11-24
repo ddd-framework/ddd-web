@@ -59,6 +59,13 @@ The package is an ES module. A CommonJS script may `require()` the entries witho
 ≥ 20.19 or ≥ 22.12 (Node's require of an ES module; none of them uses top-level await). `/api` (RTK Query), `/vite`
 and `/codegen` are import-only.
 
+### Opt-in SDK modes
+
+The default command generates the DDD RTK Query SDK. Install `swagger-sdk-generator@^3` and run
+`pnpm exec ddd-web-sdk --mode future` to generate a typed promise client and models. `--mode legacy`
+generates legacy-dialect models, stores, thunks and mocks and needs `swagger-sdk-generator@^3.1`. Each opt-in mode writes to a separate
+generated directory and uses the consumer’s generator installation. See [SDK generation modes](docs/sdk-generator-integration.md).
+
 ### File downloads
 
 Endpoints whose 2xx responses are files (`application/octet-stream`, `application/zip`, `application/pdf`,

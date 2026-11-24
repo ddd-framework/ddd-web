@@ -5,12 +5,13 @@ import { runSkillLinks } from './link-skills';
 import { consoleLogger, SdkGenerationError } from './log';
 
 const HELP = `Usage:
-  ddd-web-sdk [options]            Generate the RTK Query SDK (same as "ddd-web sdk")
+  ddd-web-sdk [options]            Generate the SDK (same as "ddd-web sdk")
   ddd-web sdk [options]
   ddd-web link-skills [options]    Link the agent skills of every installed DDD package into .claude/skills/
 
 SDK options:
   --config <path>       Config file (default: openapi-config.ts)
+  --mode <mode>         default (DDD RTK Query), future, or legacy
   --api <exportName>    Generate only this api entry
   --schema <url|file>   Spec source for the selected api (overrides schemaFile)
   --workspace <value>   Value for config.workspace.envVar (alias: --subdomain)
@@ -63,6 +64,7 @@ async function main(argv: string[]): Promise<number> {
     args,
     options: {
       config: { type: 'string' },
+      mode: { type: 'string' },
       api: { type: 'string' },
       schema: { type: 'string' },
       workspace: { type: 'string' },
@@ -78,8 +80,13 @@ async function main(argv: string[]): Promise<number> {
     return 0;
   }
   const workspace = values.workspace ?? values.subdomain;
+  const { mode } = values;
+  if (mode !== undefined && mode !== 'default' && mode !== 'future' && mode !== 'legacy') {
+    throw new SdkGenerationError('SDK generator mode must be default, future, or legacy.');
+  }
   await generateSdk({
     ...(values.config ? { config: values.config } : {}),
+    ...(mode ? { mode } : {}),
     ...(values.api ? { api: values.api } : {}),
     ...(values.schema ? { schema: values.schema } : {}),
     ...(workspace ? { workspace } : {}),

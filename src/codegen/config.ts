@@ -133,8 +133,24 @@ export interface WorkspaceOptions {
   prompt?: boolean;
 }
 
+export type SdkGeneratorMode = 'default' | 'future' | 'legacy';
+
+interface DelegatedGeneratorOptions<Output extends string> {
+  /** Base directory for generated files. Default ./src/generated-sdk; each mode and API has its own directory. */
+  outputDir?: string;
+  /** Options for the SDK generator outputs. DDD Web sets the output directories. Set mocks to {} to add them in future mode. */
+  outputs?: Partial<Record<Output, Record<string, unknown>>>;
+}
+
+export type SdkGeneratorConfig =
+  | { mode: 'default' }
+  | ({ mode: 'future' } & DelegatedGeneratorOptions<'models' | 'client' | 'mocks'>)
+  | ({ mode: 'legacy' } & DelegatedGeneratorOptions<'models' | 'stores' | 'mocks'>);
+
 export interface SdkConfig {
   apis: SdkApiConfig[];
+  /** Defaults to the built-in DDD RTK Query generator. Other modes use the consumer's SDK generator installation. */
+  generator?: SdkGeneratorConfig;
   /** Directory of generated model files. Default `<dir of first outputFile>/../models`. */
   modelsDir?: string;
   /**
