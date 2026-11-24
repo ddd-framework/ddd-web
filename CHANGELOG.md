@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.18.0
+
+### Added
+- Opt-in SDK modes over the consumer's `swagger-sdk-generator` (`ddd-web-sdk --mode future|legacy`, or
+  `generator.mode` in `openapi-config.ts`). Without a mode the generator is unchanged: DDD RTK Query, same output.
+  - `future` (`swagger-sdk-generator@^3`): models and a typed promise client with a configurable transport (Fetch by
+    default, an injected Axios instance, or a custom one) and optional seeded mocks.
+  - `legacy` (`swagger-sdk-generator@^3.1`): legacy-dialect models, Redux-RxJS stores with thunks, and mocks.
+  - Each opt-in API writes to `src/generated-sdk/<mode>/<output-file-stem>/` (`generator.outputDir` sets the base),
+    is checked against the DDD contract, gets missing path parameters repaired, honours `skipUpdatePostTwins`, and is
+    restored with every other selected API when the type check fails; `--api` and `--schema` work as for the default.
+  - `generator.outputs` passes output options through, e.g. `client.transport` or `stores.runtimeModule` (one
+    application-owned store runtime instead of a generated one).
+- `generateLegacySdk()` from `/codegen`: runs legacy mode for an application that keeps its own sources and output
+  directories (plain OpenAPI documents, staged before writing; files outside the plan stay).
+- Docs: `docs/sdk-generator-integration.md`.
+
 ## 0.17.1
 
 ### Fixed

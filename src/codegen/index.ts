@@ -12,11 +12,15 @@ export type {
   ResponseHandlerOverride,
   SdkApiConfig,
   SdkConfig,
+  SdkGeneratorConfig,
+  SdkGeneratorMode,
   SideEffectsOverride,
   WorkspaceOptions,
 } from './config';
 export { broadInvalidation } from './enhance';
 export { generateSdk } from './generate';
+export { generateLegacySdk } from './delegated-sdk';
+export type { GenerateLegacySdkOptions, LegacySdkSource } from './delegated-sdk';
 export type { GenerateSdkOptions, GenerateSdkResult } from './generate';
 export { findSkillsRepositoryRoot, linkSkills, runSkillLinks } from './link-skills';
 export type {
