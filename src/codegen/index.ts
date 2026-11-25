@@ -8,6 +8,9 @@ export type {
   EndpointOptions,
   LoadedConfig,
   ModelOptions,
+  ApiMswHandlersOptions,
+  ModelMocksOptions,
+  MswHandlersOptions,
   OperationMatcher,
   ResponseHandlerOverride,
   SdkApiConfig,
@@ -20,7 +23,7 @@ export type {
 export { broadInvalidation } from './enhance';
 export { generateSdk } from './generate';
 export { generateLegacySdk } from './delegated-sdk';
-export type { GenerateLegacySdkOptions, LegacySdkSource } from './delegated-sdk';
+export type { GenerateLegacySdkOptions, LegacySdkResult, LegacySdkSource } from './delegated-sdk';
 export type { GenerateSdkOptions, GenerateSdkResult } from './generate';
 export { findSkillsRepositoryRoot, linkSkills, runSkillLinks } from './link-skills';
 export type {

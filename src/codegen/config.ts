@@ -3,10 +3,12 @@ import * as path from 'node:path';
 import { createJiti } from 'jiti';
 import type { EndpointOptions } from './document-endpoints';
 import type { ModelOptions } from './document-models';
+import type { ApiMswHandlersOptions, MswHandlersOptions } from './msw-handlers';
 import type { DddEntityExtension, HttpMethod, OpenApiOperation } from './openapi';
 
 export type { EndpointNamingOperation, EndpointOptions } from './document-endpoints';
 export type { ModelOptions } from './document-models';
+export type { ApiMswHandlersOptions, ModelMocksOptions, MswHandlersOptions } from './msw-handlers';
 
 /** Selects operations by HTTP method (optional, case-insensitive) and path (exact string or RegExp). */
 export interface OperationMatcher {
@@ -117,6 +119,11 @@ export interface SdkApiConfig {
   responseHandlers?: ResponseHandlerOverride[];
   /** Checked before the global `invalidation`; the first resolver that returns a list wins. */
   invalidation?: InvalidationResolver;
+  /**
+   * MSW handlers for this api (default mode): `false` turns them off; an object enables them (also without the
+   * config-level `mswHandlers`) and overrides its fields, e.g. `outputFile`.
+   */
+  mswHandlers?: ApiMswHandlersOptions | false;
   /** Any further RTK codegen option (`argSuffix`, `flattenArg`, `endpointOverrides`, `filterEndpoints`, …). */
   [rtkOption: string]: unknown;
 }
@@ -183,6 +190,12 @@ export interface SdkConfig {
    * your own function; the body as `requestBody` (see {@link EndpointOptions}).
    */
   endpoints?: EndpointOptions;
+  /**
+   * Generate MSW request handlers (default mode): per api a `<stem>Mocks.ts` next to the api file with one handler
+   * factory per operation that has a request builder, answering the response model's mock from `modelMocks`. Off
+   * when absent: nothing changes. The generated file imports `msw`, which the consuming project installs.
+   */
+  mswHandlers?: MswHandlersOptions;
   /** tsconfig used for the final type check. Default `tsconfig.json` next to the config file. */
   tsconfig?: string;
 }

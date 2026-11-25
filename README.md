@@ -66,6 +66,35 @@ The default command generates the DDD RTK Query SDK. Install `swagger-sdk-genera
 generates legacy-dialect models, stores, thunks and mocks and needs `swagger-sdk-generator@^3.1`. Each opt-in mode writes to a separate
 generated directory and uses the consumer’s generator installation. See [SDK generation modes](docs/sdk-generator-integration.md).
 
+`generateLegacySdk({ …, prune: true })` also deletes the files an earlier run wrote and this run no longer plans,
+tracked per source and output in `.ddd-web-legacy-sdk.json`; files it never wrote are never deleted.
+
+### MSW handlers
+
+With `mswHandlers` in `openapi-config.ts` the default mode also writes `<stem>Mocks.ts` next to each api file: one
+[MSW](https://mswjs.io) handler factory per operation that has a request builder, answering the response model's mock
+from your model mocks. Off when absent (the output is unchanged); `msw` is a dependency of your project, not of DDD Web.
+
+```ts
+export default defineConfig({
+  endpoints: { requestBuilders: 'all' },
+  mswHandlers: { modelMocks: { importPrefix: '@mocks/models/' } }, // → import { getBookMock } from '@mocks/models/App/…/Book.mock'
+  apis: [/* … */],
+});
+```
+
+```ts
+import { adminApiMocks } from './api/adminApiMocks';
+
+export const handlers = [
+  adminApiMocks.getApiAdminLibraryBooksByBookId(),                         // GET */api/admin/library/books/* → getBookGetResponseDtoMock()
+  adminApiMocks.deleteApiAdminLibraryBooksByBookId({ status: 500, delay: 300 }),
+  adminApiMocks.getApiAdminLibraryBooksList({ response: (params, defaultMock) => ({ ...defaultMock!, books: { elements: [] } }) }),
+];
+```
+
+See [SDK generation modes](docs/sdk-generator-integration.md#msw-handlers-default-mode).
+
 ### File downloads
 
 Endpoints whose 2xx responses are files (`application/octet-stream`, `application/zip`, `application/pdf`,
