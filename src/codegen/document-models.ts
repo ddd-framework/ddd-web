@@ -178,7 +178,9 @@ export function applyEnumConsts(
     if (!values || values.length === 0) continue;
     const constName = `${modelName}${propertyName.charAt(0).toUpperCase()}${propertyName.slice(1)}`;
     if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(constName)) continue;
-    const members = [...new Set(values.map(String))].map((value) => `  ${enumKeyOf(value)}: ${JSON.stringify(value)},`).join('\n');
+    // An integer enum keeps its numbers (`"1": 1`): the backend sends numbers, a string member type would not fit them.
+    const unique = [...new Map(values.map((value) => [String(value), value])).values()];
+    const members = unique.map((value) => `  ${enumKeyOf(String(value))}: ${JSON.stringify(value)},`).join('\n');
     consts.set(constName, `export const ${constName} = {\n${members}\n};\n\nexport const ${constName}Strict = {\n${members}\n} as const;`);
     const typedFrom = options.enumPropertyType === 'wide' ? constName : `${constName}Strict`;
     const memberType = `(typeof ${typedFrom})[keyof typeof ${typedFrom}]`;

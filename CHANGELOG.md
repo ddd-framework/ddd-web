@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.19.1
+
+### Fixed
+- `enums: 'const'`: an integer enum keeps its numbers (`{ "1": 1, "101": 101 }`); the members were strings (`"1"`), so
+  the property type did not fit the numbers the backend sends.
+
 ## 0.19.0
 
 ### Added

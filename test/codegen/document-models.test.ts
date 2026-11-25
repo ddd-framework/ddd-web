@@ -59,6 +59,7 @@ const specForRcDryRun = () => {
   message.properties.objectType = { type: 'string', nullable: true };
   message.properties.realtimeModel = { type: 'string', enum: ['gpt-realtime', 'gpt-realtime-mini'] };
   message.properties.platforms = { type: 'array', enum: ['facebook', 'instagram'], items: { type: 'string' } };
+  message.properties.priority = { type: 'integer', enum: [1, 101, 100] };
   return doc;
 };
 
@@ -86,6 +87,7 @@ describe('generateSdk — models for a whole client tree (index, objectType, wid
     expect(message).toMatch(/status\?: \(typeof AIConversationMessageStatus\)\[keyof typeof AIConversationMessageStatus\] \| null/);
     expect(message).toContain('gptRealtime: "gpt-realtime"');
     expect(message).toContain('gptRealtimeMini: "gpt-realtime-mini"');
+    expect(message).toMatch(/AIConversationMessagePriority = \{ "1": 1, "101": 101, "100": 100, \}/);
     expect(message).toMatch(/platforms\?: Array<\(typeof AIConversationMessagePlatforms\)\[keyof typeof AIConversationMessagePlatforms\]>/);
     expect(read(app, 'src/api/adminApi.ts')).not.toMatch(/from ["']\.\.\/models["']/);
   }, 60_000);
