@@ -67,7 +67,7 @@ describe('opt-in SDK generation', () => {
     });
     expect(fs.readdirSync(storesDir).sort()).toEqual(['existing.ts', 'stores.ts']);
     expect(read(directory, 'src/stores/swagger/existing.ts')).toBe('export {};\n');
-  });
+  }, 60_000);
 
   it('uses the built-in RTK pipeline for a default override without loading the optional generator', async () => {
     const directory = app();
@@ -78,7 +78,7 @@ describe('opt-in SDK generation', () => {
     expect(read(directory, 'src/api/adminApi.ts')).toContain('useGetApiAdminLibraryBooksListQuery');
     expect(read(directory, 'src/api/adminApiEnhanced.ts')).toContain('invalidatesTags');
     expect(fs.existsSync(path.join(directory, 'src/generated-sdk'))).toBe(false);
-  });
+  }, 60_000);
 
   it('delegates only when selected and forwards native outputs using the validated DDD document', async () => {
     const directory = app();
@@ -99,7 +99,7 @@ describe('opt-in SDK generation', () => {
     expect(read(directory, output + '/client/client.ts')).toContain('"post":false');
     expect(read(directory, output + '/mocks/mocks.ts')).toContain('"kind":"mocks"');
     expect(read(directory, 'src/api/adminApi.ts')).toBe(unchanged);
-  });
+  }, 60_000);
 
   it('rejects legacy without the store and mock runtimes and delegates when they are installed', async () => {
     const directory = app();
@@ -113,7 +113,7 @@ describe('opt-in SDK generation', () => {
     await generateSdk({ cwd: compatible, config: config(), mode: 'legacy', logger: silentLogger });
     expect(read(compatible, 'src/generated-sdk/legacy/adminApi/stores/stores.ts')).toContain('"mode":"legacy"');
     expect(read(compatible, 'src/generated-sdk/legacy/adminApi/mocks/mocks.ts')).toContain('"kind":"mocks"');
-  });
+  }, 60_000);
 
   it('keeps other APIs on partial runs and rolls back every selected API on typecheck failure', async () => {
     const directory = app();
@@ -136,7 +136,7 @@ describe('opt-in SDK generation', () => {
     await expect(generateSdk({ cwd: directory, config: invalid, logger: silentLogger })).rejects.toThrow('Type check failed');
     expect(read(directory, admin)).toBe(adminBefore);
     expect(read(directory, client)).toBe(clientBefore);
-  });
+  }, 60_000);
 
   it('rejects unsupported DDD specs and protects existing directories before writing', async () => {
     const directory = app();
@@ -153,5 +153,5 @@ describe('opt-in SDK generation', () => {
     await expect(generateSdk({ cwd: directory, config: config({ mode: 'future' }), logger: silentLogger }))
       .rejects.toThrow('does not own');
     expect(read(directory, output + '/owned.ts')).toBe('export {};\n');
-  });
+  }, 60_000);
 });

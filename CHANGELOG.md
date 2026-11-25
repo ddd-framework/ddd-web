@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.19.0
+
+### Added
+- `generateLegacySdk({ prune: true })`: deletes the files an earlier run wrote and this run no longer plans. A
+  manifest (`manifestFile`, default `.ddd-web-legacy-sdk.json`) records each source's and output's files; only listed
+  files are deleted (hand-written files in a shared output directory stay), only for outputs that ran, and never a
+  file an output that did not run (left out, skipped, not configured this time) still lists. The first run deletes
+  nothing; `dryRun` reports and deletes nothing; folders left empty below an output directory are removed. Each
+  result carries `pruned` (the deleted paths). Off by default: without `prune` nothing changes.
+- `mswHandlers` (default mode): `<stem>Mocks.ts` next to each api file with one MSW handler factory per operation that
+  has a request builder — URL `*` + path with `*` per path parameter, default answer from the application's model
+  mocks (`modelMocks.importPrefix` + model path + `fileSuffix`, `get<Model>Mock`), an array of the item mock, `null`
+  for no content and file downloads; overrides `url`, `status`, `delay`, `response` (value or function of params,
+  default mock, info); `StoryMock` type exported. Per api: `outputFile`, `exportName`, `false`. `msw` is the
+  consumer's dependency (generated code imports it); none is added to DDD Web. Off when absent: the generated
+  output is byte-identical to 0.18.0 (compared on the sample spec and on three large application documents).
+- Types `LegacySdkResult`, `MswHandlersOptions`, `ApiMswHandlersOptions`, `ModelMocksOptions` from `/codegen`.
+
+### Tests
+- `test/codegen/legacy-prune.test.ts` (first run, removed files, shared directory with hand-written files, partial
+  and skipped runs, dry run, manifest bounds) and `test/codegen/msw-handlers.test.ts` (snapshot, path parameters,
+  arrays, no content, text and binary, filtered endpoints, type check against generated models, MSW at runtime).
+  `msw` is a dev dependency for these tests only.
+
 ## 0.18.0
 
 ### Added

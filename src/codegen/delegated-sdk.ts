@@ -25,13 +25,21 @@ export interface LegacySdkSource {
   outputs: Record<string, Record<string, unknown>>;
 }
 
-interface GeneratorResult {
+/** One source's result of a legacy run. */
+export interface LegacySdkResult {
   source: string;
   ok: boolean;
   skipped?: boolean;
   error?: Error;
   planned?: Array<{ dir: string; files: Array<{ path: string; content: string }> }>;
+  /**
+   * With `prune`: the absolute paths of the files this source wrote on an earlier run and no longer writes, deleted
+   * by this run (with `dryRun`: the files the run would delete). Absent without `prune`.
+   */
+  pruned?: string[];
 }
+
+type GeneratorResult = LegacySdkResult;
 
 interface Generator {
   generate(
@@ -67,10 +75,21 @@ export interface GenerateLegacySdkOptions {
   dryRun?: boolean;
   targetOptions?: Record<string, unknown>;
   logger?: Logger;
+  /**
+   * Delete the files an earlier run wrote and this run no longer plans (a store of a removed controller, a model or
+   * mock of a removed schema). Only files recorded in the manifest (`manifestFile`) are ever deleted, so hand-written
+   * files in a shared output directory stay. Scoped per source and output: an output of a source that did not run
+   * (left out, skipped, or without that output this time) deletes nothing, and a file it lists is kept. The first
+   * run with `prune` writes the manifest and deletes nothing. Default `false`: nothing is deleted, no manifest is
+   * read or written.
+   */
+  prune?: boolean;
+  /** The manifest of the files each source and output wrote, relative to `cwd`. Default `.ddd-web-legacy-sdk.json`. */
+  manifestFile?: string;
 }
 
 /** Runs the legacy generator for an app that owns its spec sources and generated file layout. */
-export async function generateLegacySdk(options: GenerateLegacySdkOptions): Promise<GeneratorResult[]> {
+export async function generateLegacySdk(options: GenerateLegacySdkOptions): Promise<LegacySdkResult[]> {
   const cwd = path.resolve(options.cwd ?? process.cwd());
   const engine = loadGenerator(cwd, 'legacy');
   const logger = options.logger ?? consoleLogger;
@@ -101,8 +120,129 @@ export async function generateLegacySdk(options: GenerateLegacySdkOptions): Prom
       }
     }
   }
+  const prune = options.prune ? planLegacyPrune(options.sources, results, cwd, options.manifestFile) : undefined;
   if (!options.dryRun && files.paths().length) commitOutput(files, undefined, cwd).finalize();
+  if (prune) {
+    const count = prune.deletions.reduce((total, { files: deleted }) => total + deleted.length, 0);
+    for (const { result, files: deleted } of prune.deletions) result.pruned!.push(...deleted);
+    if (options.dryRun) {
+      logger.info('prune: would delete ' + count + ' file(s) no longer generated');
+    } else {
+      for (const { root, files: deleted } of prune.deletions) {
+        for (const file of deleted) {
+          fs.rmSync(file, { force: true });
+          removeEmptyParents(path.dirname(file), root);
+        }
+      }
+      fs.mkdirSync(path.dirname(prune.manifestPath), { recursive: true });
+      fs.writeFileSync(prune.manifestPath, JSON.stringify(prune.manifest, null, 2) + '\n');
+      logger.info('prune: deleted ' + count + ' file(s) no longer generated');
+    }
+  }
   return results;
+}
+
+/** `.ddd-web-legacy-sdk.json`: per source and output, the directory and the files the last run of that output wrote. */
+interface LegacyManifest {
+  version: 1;
+  sources: Record<string, Record<string, { dir: string; files: string[] }>>;
+}
+
+interface LegacyPrunePlan {
+  manifestPath: string;
+  manifest: LegacyManifest;
+  /** Per source output that ran: the files to delete and the output directory empty folders are removed below. */
+  deletions: Array<{ result: LegacySdkResult; root: string; files: string[] }>;
+}
+
+function readLegacyManifest(file: string): LegacyManifest {
+  if (!fs.existsSync(file)) return { version: 1, sources: {} };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (error) {
+    throw new SdkGenerationError('Cannot read the legacy SDK manifest ' + file + ': ' + (error as Error).message);
+  }
+  const sources = (parsed as Partial<LegacyManifest> | null)?.sources;
+  if ((parsed as Partial<LegacyManifest> | null)?.version !== 1 || !sources || typeof sources !== 'object') {
+    throw new SdkGenerationError('Unsupported legacy SDK manifest ' + file + '. Delete it to start a new one.');
+  }
+  return parsed as LegacyManifest;
+}
+
+/** A manifest path: relative to `cwd` with forward slashes when inside it, else absolute. */
+function manifestPath(cwd: string, file: string): string {
+  return contains(cwd, file) ? path.relative(cwd, file).split(path.sep).join('/') : file;
+}
+
+/**
+ * The files to delete and the next manifest. A file is deleted when an output that ran this time listed it in the
+ * previous manifest, no output of this run plans it, no output that did not run lists it, it lies inside the
+ * directory the manifest recorded for it and it still exists.
+ */
+function planLegacyPrune(
+  sources: LegacySdkSource[],
+  results: LegacySdkResult[],
+  cwd: string,
+  manifestFile: string | undefined,
+): LegacyPrunePlan {
+  const file = path.resolve(cwd, manifestFile ?? '.ddd-web-legacy-sdk.json');
+  const previous = readLegacyManifest(file);
+  const planned = new Set<string>();
+  const next: LegacyManifest = { version: 1, sources: {} };
+  const ran = new Map<string, { source: LegacySdkSource; result: LegacySdkResult }>();
+  for (const source of sources) {
+    const result = results.find((candidate) => candidate.source === source.name);
+    if (!result?.ok || result.skipped) continue;
+    ran.set(source.name, { source, result });
+    const entries: LegacyManifest['sources'][string] = {};
+    for (const [name, options] of Object.entries(source.outputs)) {
+      const dir = path.resolve(cwd, String(options.dir));
+      const written = (result.planned ?? []).filter((output) => output.dir === dir)
+        .flatMap((output) => output.files.map((planFile) => path.resolve(output.dir, planFile.path)));
+      written.forEach((target) => planned.add(target));
+      entries[name] = { dir: manifestPath(cwd, dir), files: [...new Set(written.map((target) => manifestPath(cwd, target)))].sort() };
+    }
+    next.sources[source.name] = entries;
+  }
+  const ranOutputs = new Set(Object.entries(next.sources).flatMap(([sourceName, outputs]) =>
+    Object.keys(outputs).map((output) => sourceName + '\0' + output)));
+  const ranOutput = (sourceName: string, output: string): boolean => ranOutputs.has(sourceName + '\0' + output);
+  const kept = new Set<string>();
+  for (const [sourceName, outputs] of Object.entries(previous.sources)) {
+    for (const [output, entry] of Object.entries(outputs ?? {})) {
+      if (ranOutput(sourceName, output)) continue;
+      (entry?.files ?? []).forEach((listed) => kept.add(path.resolve(cwd, listed)));
+      (next.sources[sourceName] ??= {})[output] = entry;
+    }
+  }
+  const claimed = new Set<string>();
+  const deletions: LegacyPrunePlan['deletions'] = [];
+  for (const [sourceName, outputs] of Object.entries(previous.sources)) {
+    const current = ran.get(sourceName);
+    if (!current) continue;
+    for (const [output, entry] of Object.entries(outputs ?? {})) {
+      if (!ranOutput(sourceName, output) || !entry || typeof entry.dir !== 'string' || !Array.isArray(entry.files)) continue;
+      const root = path.resolve(cwd, entry.dir);
+      const stale = entry.files.map((listed) => path.resolve(cwd, listed)).filter((target) =>
+        contains(root, target) && target !== root && !planned.has(target) && !kept.has(target) && !claimed.has(target)
+        && fs.lstatSync(target, { throwIfNoEntry: false })?.isFile() === true);
+      stale.forEach((target) => claimed.add(target));
+      if (stale.length) deletions.push({ result: current.result, root, files: stale.sort() });
+    }
+  }
+  for (const { result } of ran.values()) result.pruned = [];
+  return { manifestPath: file, manifest: next, deletions };
+}
+
+/** Removes `directory` and its parents while they are empty, up to (not including) `root`. */
+function removeEmptyParents(directory: string, root: string): void {
+  let current = directory;
+  while (current !== root && contains(root, current)) {
+    if (!fs.existsSync(current) || fs.readdirSync(current).length > 0) return;
+    fs.rmdirSync(current);
+    current = path.dirname(current);
+  }
 }
 
 function contains(parent: string, child: string): boolean {

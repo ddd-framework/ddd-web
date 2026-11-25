@@ -36,6 +36,7 @@ too). A plain RTK-codegen file with `export const apis = [...]` is accepted as w
 | `sideEffects` | Overrides checked before the global ones (first match wins). |
 | `responseHandlers` | Overrides checked before the global ones (first match wins). |
 | `invalidation` | Resolver checked before the global one (see section 3). |
+| `mswHandlers` | `false`: no MSW handlers for this api; an object turns them on for it and overrides the global fields: `outputFile` (default `<stem>Mocks.ts` next to the api file), `exportName` (default `<stem>Mocks`), `modelMocks`. |
 | `esmExtensions` | `true` for `moduleResolution: nodenext`: generated relative imports end in `.js`. |
 | `encodePathParams` | Default `true`: a path parameter is passed through `encodeURIComponent` in the generated URL — callers pass the raw value and never encode it themselves (it would be encoded twice). `false` restores the plain interpolation. |
 | any other key | Passed to RTK codegen (`argSuffix`, `flattenArg`, `endpointOverrides`, `filterEndpoints`, …). |
@@ -52,6 +53,7 @@ too). A plain RTK-codegen file with `export const apis = [...]` is accepted as w
 | `invalidation` | `(operation: InvalidationOperation) => InvalidationTag[] \| undefined`: overrides the tags a mutation invalidates; `undefined` keeps the default. `broadInvalidation` (exported) restores the 0.2 behaviour. See section 3. |
 | `workspace` | `{ envVar, envFiles?, urlKeys?, prompt? }`: resolves a workspace / subdomain value (CLI `--workspace` → env → URL sniffed from `.env` / `.env.local` → TTY prompt) into `process.env[envVar]` before the config is evaluated again. |
 | `tsconfig` | tsconfig of the final type check. Default `tsconfig.json` next to the config. |
+| `mswHandlers` | `{ modelMocks?: { importPrefix, fileSuffix?, exportName? } }`: writes `<stem>Mocks.ts` (MSW v2 handler factories, one per operation that has a request builder) for every api. Off when absent — output unchanged. `msw` is the app's dependency. See "MSW handlers" in section 3. |
 | `endpoints` | How endpoints and their body argument are named; off by default. `naming: 'path'`: a pure function of verb and path — `stripPathPrefix` (default `/api` or `/app/api`) cut, every `{param}/` cut out and only the LAST one kept, the rest split on `/ _ - .` and capitalised behind the verb, `By<LastInner>` appended, a trailing `{param}` becomes `By<Param>` where it stands (`POST /api/client/ai/conversations/{locationId}/purposed/{purposeName}` → `postClientAiConversationsPurposedByPurposeNameByLocationId`; `buildEndpointNameFromPath` is exported). `naming` may be a function `({ method, path, operation }) => name`. The built name is used verbatim (no second camel-casing); your `filterEndpoints` / `endpointOverrides` match it. Two operations with one name stop the run. `bodyArg: 'requestBody'`: the body is the argument's `requestBody`, whatever its DTO is called. `requestBuilders: true`: every endpoint's request builder goes into `<stem>Requests.ts` (`export const <stem>Requests = { <endpoint>: (queryArg: <Arg>): string \| FetchArgs => ({ url, params, body, … }) }`) and the endpoint uses it — a bundle that only builds requests imports that module without the endpoint injection. `requestBuilders: 'all'`: the module holds the builder of every operation (their argument types are written) while `filterEndpoints` still decides what the api file injects. `cookieParameters: 'drop'` (default): parameters `in: cookie` leave the endpoints (a browser sends cookies itself; `FetchArgs` has no field for them); `'keep'` restores RTK's output. Query and path parameters stay flat in the argument. |
 | `models` | How the models of the component schemas are written; every option off by default. `naming: 'document'`: the model is named by the schema name's last dot segment exactly (`AIConversationMessage`, not `AiConversationMessage`), the segments before it are its folders — a neighbour namespace that prefixes the name never splits it. `enums: 'const'` (needs `naming: 'document'`): an enum property becomes `export const <Model><Property> = {…}` and `<Model><Property>Strict = {…} as const` in the model's file, the property typed `(typeof XStrict)[keyof typeof XStrict]` (`\| null` when nullable; `Array<…>` for an enum of array items); keys are the values with spaces, `/`, `\` as `_`, `""` as `EMPTY`. `nullableRefs: true`: `\| null` beside a nullable `$ref`. `idType: 'number' \| 'string'`: an `id` declared `string \| integer` gets that type. With `naming: 'document'` every file exports its own schema's name, also when another folder holds it too; importers alias it, the barrel leaves such a name out, and the api file imports each model by its path. `index: false`: no barrel. `enumPropertyType: 'wide'`: the property typed from the plain object (`string` in effect) instead of the Strict one. `objectType: 'const'`: a string `objectType` gets the one-value const of its schema name (`.` → `\\`, key `.` → `_`) and is required. Enum keys camel-case a dash (`gpt-realtime` → `gptRealtime`); a value that still gives no identifier is its own quoted key; an enum on an array schema stays an array. `scope: 'all'`: the models of every operation are written also when `filterEndpoints` keeps them out of the api file (their argument types are not). With several documents a shared model and its enum consts come from the first-listed one. |
 
@@ -109,6 +111,13 @@ mode generates a promise client and models. Set `outputs.mocks: {}` to add seede
 The opt-in modes use bundler-style TypeScript module resolution. They retain DDD document validation,
 path-parameter repair, `skipUpdatePostTwins` and type-check rollback. DDD RTK-specific options apply in default mode.
 
+`generateLegacySdk({ sources, prune: true })` (an app that keeps its own legacy sources and directories) also deletes
+the files an earlier run wrote and this run no longer plans. The manifest `.ddd-web-legacy-sdk.json` (`manifestFile`)
+records per source and output the files written; only listed files are deleted, only for outputs that ran, and never
+one that an output which did not run (left out, skipped, not configured) still lists — hand-written files in a shared
+mocks root and the mocks of a document left out of a partial run stay. First run: manifest only. `dryRun`: report in
+`result.pruned`, delete nothing, keep the manifest. Empty folders below an output directory go.
+
 ## 3. Generated files and cache tags
 
 | File | Content |
@@ -117,6 +126,23 @@ path-parameter repair, `skipUpdatePostTwins` and type-check rollback. DDD RTK-sp
 | `<stem>Enhanced.ts` | `baseApi.enhanceEndpoints({ addTagTypes, endpoints })` — `providesTags` / `invalidatesTags`; import once |
 | `<stem>Tags.ts` | `<stem>TagTypes` (const list) and `<Stem>TagType` (union): the tags of the generated endpoints. A tag whose operations are all left out by `filterEndpoints` is not listed; hand-written endpoints name it as an own tag |
 | `models/…` | one file per schema in its namespace folder (`App/Domain/…`), barrel `index.ts`; same leaf names in different namespaces get unique exported names |
+| `<stem>Mocks.ts` | only with `mswHandlers`: `export const <stem>Mocks = { <operation>: (custom?: Partial<StoryMock<Response, Arg>>) => http.<verb>(…) }` and the `StoryMock` type |
+
+### MSW handlers (`mswHandlers`)
+
+```ts
+mswHandlers: { modelMocks: { importPrefix: '@mocks/models/' } }   // fileSuffix '.mock', exportName get<Model>Mock
+```
+
+- One factory per operation with a request builder (all operations with `requestBuilders: 'all'`, else the api's
+  endpoints). URL `*<path>` with `*` per `{param}` (any origin; MSW ignores the query). `*` spans segments: use a
+  static path before a parameterised one it also matches, or pass `url`.
+- Default answer: one model → `get<Model>Mock()` from `importPrefix + <model path below modelsDir> + fileSuffix`;
+  array of a model → `[mock]`; no content / other shapes / no `modelMocks` → `null`; file download → `null`, 200;
+  status = first declared 2xx.
+- `custom`: `url`, `status`, `delay`, `response` (value or `(params, defaultMock, info) => value | Promise`;
+  `params` = path + query values as strings). `null` → empty body; a download takes a `Blob` / string body.
+- Typed by the generated `<Op>ApiResponse` / `<Op>ApiArg`; a mock of another shape fails the type check.
 
 Tag per endpoint: the entity of `x-ddd-entity` when present, else the operation tag, else the last path segment that
 names a known tag (warning when none is found — the endpoint gets no tags).

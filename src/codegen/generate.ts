@@ -21,6 +21,7 @@ import { OutputFiles } from './files';
 import { formatFiles, typecheck } from './format';
 import { consoleLogger, SdkGenerationError, type Logger } from './log';
 import { extractModels } from './models';
+import { renderMswHandlers } from './msw-handlers';
 import { detectMultipartEndpoints, injectMultipartBodies, MULTIPART_IMPORT } from './multipart';
 import type { OpenApiDocument } from './openapi';
 import { indexOperations } from './operations';
@@ -201,23 +202,26 @@ export async function generateSdk(options: GenerateSdkOptions = {}): Promise<Gen
         const apiSource = extractModels({ ...extractOptions, apiSource: multipart.source, responseKinds, modelsOnly });
         const withHandlers = injectResponseHandlers(apiSource, handlerEndpoints);
         const finalApiSource = multipart.injected.length > 0 ? `${MULTIPART_IMPORT}\n${withHandlers}` : withHandlers;
-        return { endpoints, handlerEndpoints, multipartCount: multipart.injected.length, finalApiSource };
+        return { endpoints, handlerEndpoints, multipartCount: multipart.injected.length, finalApiSource, apiSource };
       };
       // models.scope 'all' and endpoints.requestBuilders 'all': a pass over every operation, also those the endpoint
       // filter leaves out of the api file — for the models, and (builders 'all') for the request builders and their
       // argument types
       const buildersOfAllOperations = endpointOptions.requestBuilders === 'all' && api.config.filterEndpoints !== undefined;
       let requestsSourceOfAllOperations: string | null = null;
+      let passOfAllOperations: Awaited<ReturnType<typeof runPass>> | null = null;
       if ((modelOptions.scope === 'all' || buildersOfAllOperations) && api.config.filterEndpoints !== undefined) {
         const unfiltered = await runPass({ ...api, config: { ...api.config, filterEndpoints: undefined } }, `${i}-all.json`, !buildersOfAllOperations);
         if (buildersOfAllOperations) {
+          passOfAllOperations = unfiltered;
           const requestsStem = `${api.stem}Requests`;
           requestsSourceOfAllOperations = splitRequestBuilders(unfiltered.finalApiSource, requestsStem, `./${requestsStem}`).requestsSource;
           logger.info('  request builders of all operations (endpoints.requestBuilders all)');
         }
         if (modelOptions.scope === 'all') logger.info('  models of all operations written (models.scope all)');
       }
-      const { endpoints, handlerEndpoints, multipartCount, finalApiSource } = await runPass(api, `${i}.json`, false);
+      const mainPass = await runPass(api, `${i}.json`, false);
+      const { endpoints, handlerEndpoints, multipartCount, finalApiSource } = mainPass;
       const fileCount = [...handlerEndpoints.values()].filter((kind) => kind === 'blob').length;
       if (fileCount > 0) logger.info(`  ${fileCount} file download endpoint(s) (blobResponseHandler)`);
       if (multipartCount > 0) logger.info(`  ${multipartCount} multipart endpoint(s) (multipartFiles)`);
@@ -231,6 +235,28 @@ export async function generateSdk(options: GenerateSdkOptions = {}): Promise<Gen
         logger.info(`  ${split.count} request builder(s) used by ${api.stem}.ts`);
       } else {
         files.set(api.outputFile, finalApiSource);
+      }
+
+      const msw = api.config.mswHandlers === false ? undefined
+        : api.config.mswHandlers ?? loaded.config.mswHandlers ? { ...loaded.config.mswHandlers, ...(api.config.mswHandlers || {}) } : undefined;
+      if (msw) {
+        // the operations that have a request builder: every operation with requestBuilders 'all', else the endpoints
+        const pass = passOfAllOperations ?? mainPass;
+        const outputFile = msw.outputFile ? path.resolve(loaded.rootDir, msw.outputFile) : path.join(api.outputDir, `${api.stem}Mocks.ts`);
+        files.set(outputFile, renderMswHandlers({
+          apiSource: pass.apiSource,
+          apiFilePath: api.outputFile,
+          endpoints: pass.endpoints,
+          responseKinds: new Map([...pass.handlerEndpoints].filter((entry): entry is [string, 'text' | 'blob'] => entry[1] === 'text' || entry[1] === 'blob')),
+          doc,
+          files,
+          modelsDir,
+          outputFile,
+          exportName: msw.exportName ?? `${api.stem}Mocks`,
+          modelMocks: msw.modelMocks,
+          esm,
+        }));
+        logger.info(`  MSW handlers of ${pass.endpoints.length} operation(s) (${path.basename(outputFile)})`);
       }
 
       const withExtension = (specifier: string): string => (esm ? `${specifier}.js` : specifier);

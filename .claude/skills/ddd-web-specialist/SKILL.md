@@ -1,9 +1,9 @@
 ---
 name: ddd-web-specialist
-description: "Use and maintain @mgamadeus/ddd-web, the TS client of mgamadeus/ddd: openapi-config.ts defineConfig (schemaFile, sideEffects, responseHandlers, invalidation), ddd-web-sdk modes default, future and legacy (cache tags by entity identity, mergeDddTagTypes, blob downloads, multipartFiles uploads, progress via baseQuery.upload), QueryOptions builders, createDddBaseQuery (Bearer, shared refresh + retry, relogin, session-bound requests, normalizeDddError), token storage, JWT helpers, MooTools Request (dddFetchApiRequestPlugin), /issues reporting (browser, Node, React Native), link-skills (--check), release. Use when wiring a frontend to a DDD API, regenerating or switching SDK modes, building filters, uploading files, FormData, upload or download progress, fixing token refresh, guest login, a request sent under the wrong account after a switch, stale cache tags, downloading an export, requests failing in a legacy page, reporting errors to the issues log, linking skills, or releasing ddd-web."
+description: "Use and maintain @mgamadeus/ddd-web, the TS client of mgamadeus/ddd: openapi-config.ts defineConfig (schemaFile, sideEffects, responseHandlers, invalidation), ddd-web-sdk modes default, future and legacy (MSW handlers, legacy prune, cache tags by entity identity, mergeDddTagTypes, blob downloads, multipartFiles uploads, progress via baseQuery.upload), QueryOptions, createDddBaseQuery (Bearer, shared refresh + retry, relogin, session-bound requests, normalizeDddError), token storage, JWT, MooTools Request, /issues reporting (browser, Node), link-skills (--check), release. Use when wiring a frontend to a DDD API, regenerating or switching SDK modes, MSW mocks for stories, pruning stale generated files, building filters, uploading files, FormData, upload or download progress, fixing token refresh, guest login, a request sent under the wrong account after a switch, stale cache tags, downloading an export, requests failing in a legacy page, reporting errors to the issues log, linking skills, or releasing ddd-web."
 metadata:
   author: mgamadeus
-  version: "1.7.0"
+  version: "1.8.0"
   package: "@mgamadeus/ddd-web"
 ---
 
@@ -91,6 +91,10 @@ DDD RTK Query is the default. Use `ddd-web-sdk --mode future` with the consumerâ
 for models and a promise client. Use `--mode legacy` with `swagger-sdk-generator@^3.1` for legacy-dialect
 models, stores, thunks, and mocks. Use `generator.mode` to select a mode in config.
 Opt-in output goes to `src/generated-sdk/<mode>/<api-stem>/` by default. See [references/consumer.md](references/consumer.md).
+
+`mswHandlers: { modelMocks: { importPrefix } }` (default mode, off when absent) adds `<stem>Mocks.ts`: an MSW handler
+factory per operation answering the response model's mock. `generateLegacySdk({ prune: true })` deletes files an
+earlier legacy run wrote and this one no longer plans (manifest `.ddd-web-legacy-sdk.json`, never unlisted files).
 
 ## Rules
 
