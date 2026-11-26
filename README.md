@@ -258,8 +258,13 @@ ddd-web link-skills [--check] [--dry-run] [--quiet] [--root <dir>]
 ```
 
 ```json
-{ "scripts": { "postinstall": "ddd-web link-skills" } }
+{ "scripts": { "postinstall": "ddd-web link-skills", "link-skills": "ddd-web link-skills" } }
 ```
+
+With `ignore-scripts=true` (in `.npmrc` or `~/.npmrc`) npm and pnpm run no `postinstall`: an install links nothing.
+Run `npm run link-skills` (or `pnpm link-skills`) after the install — `npm run` runs a named script even then — or
+rely on the Composer hook `ddd-link-skills`, which walks `node_modules/@mgamadeus/*` too and links the npm packages'
+skills on the next Composer run.
 
 Programmatic: `runSkillLinks({ cwd, root, check, dryRun, quiet, logger })` from `/codegen` returns a report with
 `exitCode`, `skills`, `lines` and `problems`; `linkSkills()` (one result per skill) stays for existing callers.
