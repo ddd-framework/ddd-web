@@ -103,14 +103,16 @@ document with `requestBuilders: 'all'`, otherwise the endpoints of the api file)
 ```ts
 export const adminApiMocks = { // abridged: the call also carries the type arguments
   getApiAdminLibraryBooksByBookId: (custom?: Partial<StoryMock<GetApiAdminLibraryBooksByBookIdApiResponse, GetApiAdminLibraryBooksByBookIdApiArg>>) =>
-    mockOperation('get', '*/api/admin/library/books/*', '/api/admin/library/books/{bookId}', 'json', 200, () => getBookGetResponseDtoMock(), custom),
+    mockOperation('get', '*/api/admin/library/books/:bookId', '/api/admin/library/books/{bookId}', 'json', 200, () => getBookGetResponseDtoMock(), custom),
   // …
 };
 ```
 
-- **URL**: `*` + the operation path with each `{param}` as `*` — any origin and base path; MSW ignores the query
-  string. `*` matches across segments, so register a static path (`/books/featured`) before a parameterised one it
-  also matches (`/books/{bookId}`), or pass `url`.
+- **URL**: `*` + the operation path with each `{param}` as an MSW `:param` — any origin and base path; MSW ignores
+  the query string. A `:param` matches exactly one segment (`/books/:bookId` does not answer `/books/7/archive`), but
+  it does match a static sibling, so register a static path (`/books/featured`) before a parameterised one it also
+  matches (`/books/{bookId}`), or pass `url`. Parameter names are reduced to word characters (`{file-name}` →
+  `:file_name`).
 - **Default answer**: a response that is one model answers its mock (`get<Model>Mock()` from
   `importPrefix + <model path> + fileSuffix`); an array of a model answers `[mock]`; no content, another shape or no
   `modelMocks` answer `null`. A file download answers `null` with status 200; text answers `null`. The status is the

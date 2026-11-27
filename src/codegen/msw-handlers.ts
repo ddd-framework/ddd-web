@@ -118,7 +118,7 @@ export function renderMswHandlers(input: RenderMswHandlersInput): string {
       if (shape && local) defaultMock = shape.array ? `[${local}()]` : `${local}()`;
     }
     if (kind === 'text' && responseType === 'unknown') responseType = 'string';
-    const pattern = `*${endpoint.path.replace(/\{[^}]+\}/g, '*')}`;
+    const pattern = mswPathPattern(endpoint.path);
     const key = IDENTIFIER.test(endpoint.key) ? endpoint.key : JSON.stringify(endpoint.key);
     entries.push(
       `  ${key}: (custom?: Partial<StoryMock<${responseType}, ${argType}>>) =>\n` +
@@ -171,7 +171,7 @@ export type StoryMockParams<Arg> = { [Name in Arg extends object ? Extract<keyof
 
 /** How a generated handler answers; the factories take \`Partial<StoryMock<…>>\`. */
 export interface StoryMock<Response, Arg = void> {
-  /** URL pattern matched instead of the generated one (any origin + the operation path, \`*\` per path parameter). */
+  /** URL pattern matched instead of the generated one (any origin + the operation path, \`:name\` per path parameter). */
   url: string;
   /** Default: the operation's first declared 2xx status (200 for a file download). */
   status: number;
@@ -233,6 +233,24 @@ const mockOperation = <Response, Arg>(
     return new HttpResponse(body as unknown as BodyInit, init);
   });
 `;
+
+/**
+ * MSW URL pattern of an operation path: any origin and base path (`*`), then the path with each `{param}` as an MSW
+ * `:param`, which matches exactly one segment (a `*` would match across segments: `/books/{id}` would also answer
+ * `/books/7/archive`). Parameter names are reduced to word characters and kept unique.
+ */
+export function mswPathPattern(operationPath: string): string {
+  const used = new Set<string>();
+  const path = operationPath.replace(/\{([^}]+)\}/g, (_, raw: string) => {
+    let name = raw.replace(/\W/g, '_') || 'param';
+    if (/^\d/.test(name)) name = `p${name}`;
+    let unique = name;
+    for (let index = 2; used.has(unique); index++) unique = `${name}${index}`;
+    used.add(unique);
+    return `:${unique}`;
+  });
+  return `*${path}`;
+}
 
 /** The first declared 2xx status of an operation; 200 when it declares none. */
 function successStatus(responses: Record<string, unknown> | undefined): number {
