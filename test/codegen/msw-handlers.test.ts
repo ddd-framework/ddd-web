@@ -4,6 +4,7 @@ import { setupServer } from 'msw/node';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { generateSdk, silentLogger, type SdkConfig } from '../../src/codegen/index';
 import { typecheck } from '../../src/codegen/format';
+import { mswPathPattern } from '../../src/codegen/msw-handlers';
 import type { OpenApiDocument } from '../../src/codegen/openapi';
 import { apiEntry, createApp, read, readSample, removeApp, writeSpec } from './helpers';
 
@@ -85,9 +86,9 @@ describe('MSW handlers (default mode, mswHandlers)', () => {
       const start = handlers.indexOf(`  ${key}: (`);
       return handlers.slice(start, handlers.indexOf('custom,\n    ),', start)).replace(/\s+/g, ' ');
     };
-    expect(entry('getApiAdminLibraryBooksByBookId')).toContain('"get", "*/api/admin/library/books/*", "/api/admin/library/books/{bookId}", "json", 200, () => getBookGetResponseDtoMock(),');
+    expect(entry('getApiAdminLibraryBooksByBookId')).toContain('"get", "*/api/admin/library/books/:bookId", "/api/admin/library/books/{bookId}", "json", 200, () => getBookGetResponseDtoMock(),');
     expect(entry('getApiAdminLibraryBooksFeatured')).toContain('"json", 200, () => [getBookMock()],');
-    expect(entry('postApiAdminLibraryBooksByBookIdArchive')).toContain('"post", "*/api/admin/library/books/*/archive", "/api/admin/library/books/{bookId}/archive", "json", 204, () => null,');
+    expect(entry('postApiAdminLibraryBooksByBookIdArchive')).toContain('"post", "*/api/admin/library/books/:bookId/archive", "/api/admin/library/books/{bookId}/archive", "json", 204, () => null,');
     expect(entry('getApiAdminLibraryBooksExport')).toContain('StoryMock<Blob | string | null,');
     expect(entry('getApiAdminLibraryBooksExport')).toContain('"blob", 200, () => null,');
     expect(entry('getApiAdminLibraryBooksByBookIdPreview')).toContain('"text", 200, () => null,');
@@ -103,7 +104,7 @@ describe('MSW handlers (default mode, mswHandlers)', () => {
         "import type { Book } from './models/App/Domain/Library/Entities/Books/Book';",
         'export const handlers = [',
         '  adminApiMocks.getApiAdminLibraryBooksFeatured({ response: (params, defaultMock) => [...(defaultMock ?? []), ...(params.noCache ? [] : [])] }),',
-        "  adminApiMocks.getApiAdminLibraryBooksByBookId({ status: 404, delay: 'infinite', url: '*/books/*' }),",
+        "  adminApiMocks.getApiAdminLibraryBooksByBookId({ status: 404, delay: 'infinite', url: '*/books/:bookId' }),",
         '  adminApiMocks.getApiAdminLibraryBooksExport({ response: new Blob(["x"]) }),',
         '];',
         'export const featured: Partial<StoryMock<Book[], void>> = { response: [] };',
@@ -114,6 +115,15 @@ describe('MSW handlers (default mode, mswHandlers)', () => {
     );
     expect(typecheck(app, path.join(app, 'tsconfig.json'), silentLogger)).toBe(true);
   }, 60_000);
+});
+
+describe('mswPathPattern', () => {
+  it('turns each path parameter into one MSW segment parameter with a word-character, unique name', () => {
+    expect(mswPathPattern('/api/books')).toBe('*/api/books');
+    expect(mswPathPattern('/api/accounts/{accountId}/locations/{locationId}')).toBe('*/api/accounts/:accountId/locations/:locationId');
+    expect(mswPathPattern('/files/{file-name}.{ext}')).toBe('*/files/:file_name.:ext');
+    expect(mswPathPattern('/a/{id}/b/{id}/{1st}')).toBe('*/a/:id/b/:id2/:p1st');
+  });
 });
 
 describe('MSW handlers at runtime', () => {
@@ -147,7 +157,7 @@ describe('MSW handlers at runtime', () => {
   afterAll(() => server.close());
 
   it('answers the default mock, an array, no content and the declared status', async () => {
-    // `*` matches any segments: the static path goes before the parameterised one it would also match
+    // `:bookId` matches one segment: the static path goes before the parameterised one it would also match
     server.use(mocks.getApiAdminLibraryBooksFeatured!(), mocks.getApiAdminLibraryBooksByBookId!(), mocks.postApiAdminLibraryBooksByBookIdArchive!());
     const single = await fetch('https://api.example.com/api/admin/library/books/7?noCache=1');
     expect([single.status, await single.json()]).toEqual([200, { mock: 'BookGetResponseDto' }]);
@@ -155,6 +165,14 @@ describe('MSW handlers at runtime', () => {
     expect(await list.json()).toEqual([{ mock: 'Book' }]);
     const archived = await fetch('https://api.example.com/api/admin/library/books/7/archive', { method: 'POST' });
     expect([archived.status, await archived.text()]).toEqual([204, '']);
+  });
+
+  it('matches a path parameter in one segment only', async () => {
+    server.use(mocks.getApiAdminLibraryBooksByBookId!());
+    const single = await fetch('https://api.example.com/api/admin/library/books/7');
+    expect(single.status).toBe(200);
+    // with `*` per parameter `/books/*` answered this deeper path too
+    await expect(fetch('https://api.example.com/api/admin/library/books/7/preview')).rejects.toThrow();
   });
 
   it('honours custom response (value or function of params and default mock), status, url and delay', async () => {

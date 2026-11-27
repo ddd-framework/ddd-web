@@ -87,7 +87,7 @@ export default defineConfig({
 import { adminApiMocks } from './api/adminApiMocks';
 
 export const handlers = [
-  adminApiMocks.getApiAdminLibraryBooksByBookId(),                         // GET */api/admin/library/books/* → getBookGetResponseDtoMock()
+  adminApiMocks.getApiAdminLibraryBooksByBookId(),                         // GET */api/admin/library/books/:bookId → getBookGetResponseDtoMock()
   adminApiMocks.deleteApiAdminLibraryBooksByBookId({ status: 500, delay: 300 }),
   adminApiMocks.getApiAdminLibraryBooksList({ response: (params, defaultMock) => ({ ...defaultMock!, books: { elements: [] } }) }),
 ];

@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- `mswHandlers`: a path parameter in the URL pattern is an MSW `:param` (one segment) instead of `*` (any segments).
+  `*/books/*` also answered `/books/7/archive` and every other deeper path, so a handler could swallow the request of
+  another operation and hide a wrong URL. Parameter names are reduced to word characters and kept unique
+  (`{file-name}` → `:file_name`). The params a `response` function receives are unchanged. Regenerate the handlers;
+  a hand-written `url` override keeps working as it is.
+
+### Tests
+- `mswPathPattern` (names, several parameters, duplicates) and a runtime check that `/books/:bookId` leaves
+  `/books/7/preview` unanswered.
+
 ## 0.19.1
 
 ### Fixed
