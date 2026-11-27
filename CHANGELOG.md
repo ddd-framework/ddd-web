@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.19.2
 
 ### Fixed
 - `mswHandlers`: a path parameter in the URL pattern is an MSW `:param` (one segment) instead of `*` (any segments).
